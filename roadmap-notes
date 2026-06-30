@@ -1,0 +1,33 @@
+haskell:
+- use ghc-wpc plugin and tooling to create a fullpak or compiled form of application
+- load app and save to json representation
+
+idris:
+- load json based estg ir for the full program
+
+design:
+  offline processing if extstg binary files to json extstg
+
+TODO:
+  done - compile ghc-wpc plugin
+  skip - create foundation pak or use one
+  done - create sample program
+  done - create tool that converts extstg files to json-extstg
+  done - create idris json-extstg loader utility app
+  done - create ghc_stgapp idris tooling, yaml reading, program collection, foundation pak handling
+      ALTERNATIVE:
+        A) use jq to convert yaml to json along with data processing functions
+        B) use external-stg utility apps to get ready use data? <-- USE THIS for simplicty *******
+  skip - create json based foundation pak
+        WORKAROUND: always convert from modpak to json
+  done - use pack to compile idris estgi
+  done - load whole program ir
+  done - create foundation-pak for ghc 9.10.3
+  - merge external-stg-syntax .idr files with estgi2 repository
+  done - create high level ext stg ir for idris
+    done + derive show, eq, ord instances stg ir
+    A) copy haskell's high level ext-stg
+        done + port Reconstruct.hs
+        done + use record types in high level idris extstg data types
+    B) use dependent types where it helps
+  - use custom eq and ord instances based on unique names

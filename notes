@@ -1,0 +1,15 @@
+IDEAS:
+  foundation tasks:
+    done + value data types
+    done + heap object types
+    done + stg state
+    done + extstg json loader
+
+value types:
+  + atom
+  + heap object
+  + stack continuation
+
+done - json loader todo:
+  - FromJSON interface with primitives and error reporting
+  - read ToJSON STG code

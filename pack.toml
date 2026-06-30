@@ -1,0 +1,15 @@
+[custom.all.estgi2]
+type = "local"
+path = "."
+ipkg = "estgi2.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.estgi2-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"
+
+[custom.all.json-aeson]
+type = "local"
+path = "custom-deps/idris2-json-aeson"
+ipkg = "json-aeson.ipkg"

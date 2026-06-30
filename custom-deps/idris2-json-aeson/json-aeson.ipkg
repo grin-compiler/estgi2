@@ -1,0 +1,17 @@
+package json-aeson
+
+authors    = "stefan-hoeck"
+brief      = "Simplified derivable JSON marshallers for simple people like me. It is modified to have a compatible option with Haskell aeson."
+version    = 0.5.0
+sourcedir  = "src"
+depends    = base         >= 0.6.0
+           , elab-util
+           , ilex-json
+
+modules = Derive.FromJSON.Simple
+        , Derive.ToJSON.Simple
+        , JSON.Simple
+        , JSON.Simple.Derive
+        , JSON.Simple.FromJSON
+        , JSON.Simple.Option
+        , JSON.Simple.ToJSON
