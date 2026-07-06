@@ -31,3 +31,9 @@ TODO:
         done + use record types in high level idris extstg data types
     B) use dependent types where it helps
   - use custom eq and ord instances based on unique names
+
+TODO:
+  - efficient binder lookup
+  - bind top binders
+  - implement stack continuation machinery
+  - implement expression evaluation

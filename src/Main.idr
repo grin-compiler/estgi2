@@ -8,7 +8,12 @@ import Stg.JSON
 import Stg.Reconstruct
 import Stg.GenMySyntax
 
+import Data.SortedMap
+
+import Control.Monad.State
+
 import Base
+import Interpreter
 
 export
 decodeSModule : String -> Either String SModule
@@ -64,8 +69,37 @@ main = do
     | _ => putStrLn "usage: idr-stgapp FILE"
 
   putStrLn "parsing: \{fp}"
-  _ <- loadProgram fp
+  mods <- loadProgram fp
+
+  let tops = concatMap topBindings $ concatMap gettops mods
+
+  rootMain <- case [i | i <- tops, i.binderUniqueName == "main_:Main.main"] of
+              [mainId]  => pure mainId
+              []        => die "main_:Main.main not found"
+              _         => die "multiple main_:Main.main have found"
+
+  putStrLn $ show rootMain
   putStrLn "SUCCESS"
+
+  let run = do
+        --when switchCWD $ liftIO $ setCurrentDirectory stgappDir
+        --declareTopBindings mods
+        --buildCWrapperHsTypeMap mods
+        --initRtsSupport progName progArgs mods
+        limit <- gets ssNextHeapAddr
+        modify {ssDynamicHeapStart := limit}
+
+        -- TODO: check how it is done in the native RTS: call hs_main
+        mainAtom <- lookupEnv empty rootMain
+
+        evalOnMainThread $ do
+          stackPush $ Apply [Void]
+          pure [mainAtom]
+
+  s <- execStateT emptyStgState run
+  pure ()
+
+
 {-
 main : IO ()
 main = do

@@ -5,19 +5,9 @@ import Data.Buffer
 import Data.SortedSet
 import Data.SortedMap
 import Stg.Syntax
-{-
-Module       = SModule
-TopBinding   = STopBinding
-Binding      = SBinding
-Expr         = SExpr
-Rhs          = SRhs
-Alt          = SAlt
-AltCon       = SAltCon
-AltType      = SAltType
-Arg          = SArg
-StubDecl     = SStubDecl
-ForeignStubs = SForeignStubs
--}
+import Control.Monad.State
+import Data.List
+
 Addr = Int
 
 data ArrIdxT
@@ -53,13 +43,16 @@ data PtrOrigin
   | LabelPtr      String LabelSpec  -- foreign symbol/label name + label sepcification (i.e. data or function)
 --  deriving (Show, Eq, Ord)
 
+public export
 IdT : Type
 IdT = Int -- TODO
 
+public export
 DC : Type
 DC = Int -- TODO
 
 -- TODO: detect coercions during the evaluation
+public export
 data Atom     -- Q: should atom fit into a cpu register? A: yes
   = HeapPtr       Addr
   | Literal       Lit  -- TODO: remove this
@@ -113,6 +106,7 @@ record TLogEntry where
 
 TLog = SortedMap Int TLogEntry
 
+public export
 data ScheduleReason
   = SR_ThreadFinished
   | SR_ThreadFinishedMain
@@ -121,6 +115,7 @@ data ScheduleReason
   | SR_ThreadYield
 --  deriving (Show, Eq, Ord)
 
+public export
 data StackContinuation
   -- basic block related
   = CaseOf  Int IdT Env IdT (CutShow AltType) (CutShow $ List Alt)  -- closure addr & name (debug) ; pattern match on the result ; carries the closure's local environment
@@ -190,6 +185,7 @@ data BlockReason
   | BlockedOnDelay        (Clock UTC)   -- target time to wake up thread
 --  deriving (Eq, Ord, Show)
 
+public export
 data ThreadStatus
   = ThreadRunning
   | ThreadBlocked   BlockReason
@@ -197,6 +193,7 @@ data ThreadStatus
   | ThreadDied      -- RTS name: ThreadKilled
 --  deriving (Eq, Ord, Show)
 
+public export
 record ThreadState where
   constructor MkThreadState
   tsCurrentResult     : List Atom -- Q: do we need this? A: yes, i.e. MVar read primops can write this after unblocking the thread
@@ -248,6 +245,7 @@ Heap = SortedMap Int HeapObject
 Stack = List StackContinuation
 
 
+public export
 record StgState where
   constructor MkStgState
   ssHeap                : Heap
@@ -378,3 +376,146 @@ record StgState where
   , ssDebugSettings       :: DebugSettings
 -}
 --  deriving (Show)
+
+M = StateT StgState IO
+
+export
+stackPush : StackContinuation -> M ()
+stackPush sc = modify $ \s => {ssThreads $= updateExisting {tsStack $= (sc ::)} s.ssCurrentThreadId} s
+
+export
+stackPop : M (Maybe StackContinuation)
+stackPop = state $ \s =>
+    ( {ssThreads $= updateExisting {tsStack $= drop 1} s.ssCurrentThreadId} s
+    , lookup s.ssCurrentThreadId s.ssThreads >>= head' . tsStack
+    )
+
+export
+freshHeapAddress : M Addr
+freshHeapAddress = state $ \s => ({ssNextHeapAddr $= (+) 1} s, s.ssNextHeapAddr)
+
+export
+store : Addr -> HeapObject -> M ()
+store a o = modify {ssHeap $= insert a o}
+{-
+-- TODO: Q: how to implement pointer arithmetics and how to handle string constants and string literal pointers?
+
+-- string constants
+-- NOTE: the string gets extended with a null terminator
+getCStringConstantPtrAtom : String -> M Atom
+getCStringConstantPtrAtom key = do
+  strMap <- gets ssCStringConstants
+  case lookup key strMap of
+    Just a  -> pure a
+    Nothing -> do
+      let bsCString = BS8.snoc key '\0'
+          (bsFPtr, bsOffset, _bsLen) = BS.toForeignPtr bsCString
+          a = PtrAtom (CStringPtr bsCString) $ plusPtr (unsafeForeignPtrToPtr bsFPtr) bsOffset
+      modify' $ \s -> s {ssCStringConstants = Map.insert key a strMap}
+      pure a
+-}
+
+export
+mylog : String -> M ()
+mylog _ = pure ()
+
+export
+createThread : M (Int, ThreadState)
+createThread = do
+  let ts = MkThreadState
+        { tsCurrentResult     = []
+        , tsStack             = []
+        , tsStatus            = ThreadRunning
+        , tsBlockedExceptions = []
+        , tsBlockExceptions   = False
+        , tsInterruptible     = False
+        , tsBound             = False
+        , tsLocked            = False
+        , tsCapability        = 0 -- TODO: implement capability handling
+        , tsLabel             = Nothing
+        , tsActiveTLog        = Nothing
+        , tsTLogStack         = []
+        }
+  threadId <- gets ssNextThreadId
+  modify {ssThreads $= insert threadId ts, ssNextThreadId := 1 + threadId}
+  pure (threadId, ts)
+
+export
+scheduleToTheEnd : Int -> M ()
+scheduleToTheEnd tid = do
+  modify {ssScheduledThreadIds $= (++ [tid])}
+
+export
+switchToThread : Int -> M () -- TODO: check what code uses this
+switchToThread tid = do
+  modify {ssCurrentThreadId := tid}
+
+export
+stgErrorM : String -> M a
+
+export
+getThreadState : Int -> M ThreadState
+getThreadState tid = do
+  Just a <- lookup tid <$> gets ssThreads
+    | Nothing => stgErrorM $ "unknown ThreadState: " ++ show tid
+  pure a
+
+export
+isThreadLive : ThreadStatus -> Bool
+isThreadLive = \case
+  ThreadFinished  => False
+  ThreadDied      => False
+  _               => True
+
+export
+emptyStgState : StgState
+emptyStgState = MkStgState
+  { ssHeap                = empty
+  , ssStaticGlobalEnv     = empty
+  , ssDynamicHeapStart    = 0
+  , ssCStringConstants    = empty
+
+  -- threading
+  , ssThreads             = empty
+
+  -- thread scheduler related
+  , ssCurrentThreadId     = -1
+  , ssScheduledThreadIds  = []
+  , ssThreadStepBudget    = 0
+
+  -- primop related
+
+  --ssStableNameMap       : SortedMap Atom Int -- TODO
+  , ssWeakPointers        = empty
+  , ssStablePointers      = empty
+  , ssMutableByteArrays   = empty
+  , ssMVars               = empty
+  , ssTVars               = empty
+  , ssMutVars             = empty
+  , ssArrays              = empty
+  , ssMutableArrays       = empty
+  , ssSmallArrays         = empty
+  , ssSmallMutableArrays  = empty
+  , ssArrayArrays         = empty
+  , ssMutableArrayArrays  = empty
+
+  , ssNextThreadId          = 0
+  , ssNextHeapAddr          = 0
+  , ssNextStableName        = 0
+  , ssNextWeakPointer       = 0
+  , ssNextStablePointer     = 0
+  , ssNextMutableByteArray  = 0
+  , ssNextMVar              = 0
+  , ssNextMutVar            = 0
+  , ssNextTVar              = 0
+  , ssNextArray             = 0
+  , ssNextMutableArray      = 0
+  , ssNextSmallArray        = 0
+  , ssNextSmallMutableArray = 0
+  , ssNextArrayArray        = 0
+  , ssNextMutableArrayArray = 0
+  }
+
+export
+lookupEnv : Env -> Binder -> M Atom
+--lookupEnv localEnv b = snd <$> lookupEnvSO localEnv b
