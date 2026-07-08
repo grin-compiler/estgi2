@@ -83,7 +83,7 @@ main = do
 
   let run = do
         --when switchCWD $ liftIO $ setCurrentDirectory stgappDir
-        --declareTopBindings mods
+        declareTopBindings mods
         --buildCWrapperHsTypeMap mods
         --initRtsSupport progName progArgs mods
         limit <- gets ssNextHeapAddr

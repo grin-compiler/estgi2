@@ -1,38 +1,45 @@
 module Base
 
+import Derive.Prelude
+
 import System.Clock
 import Data.Buffer
 import Data.SortedSet
 import Data.SortedMap
 import Stg.Syntax
+import Stg.JSON
 import Control.Monad.State
 import Data.List
+
+%hide Language.Reflection.TTImp.AltType
+
+%language ElabReflection
 
 Addr = Int
 
 data ArrIdxT
   = MutArrIdx Int
   | ArrIdx    Int
---  deriving (Show, Eq, Ord)
+%runElab derive "ArrIdxT" [Show, Eq, Ord]
 
 data SmallArrIdxT
   = SmallMutArrIdx Int
   | SmallArrIdx    Int
---  deriving (Show, Eq, Ord)
+%runElab derive "SmallArrIdxT" [Show, Eq, Ord]
 
 data ArrayArrIdxT
   = ArrayMutArrIdx Int
   | ArrayArrIdx    Int
---  deriving (Show, Eq, Ord)
+%runElab derive "ArrayArrIdxT" [Show, Eq, Ord]
 
 record ByteArrayIdx where
   constructor MkByteArrayIdx
   baId        : Int
   baPinned    : Bool
   baAlignment : Int
+%runElab derive "ByteArrayIdx" [Show, Eq, Ord]
 
---  deriving (Show, Eq, Ord)
-
+public export
 data PtrOrigin
   = CStringPtr    String           -- null terminated string
   | ByteArrayPtr  ByteArrayIdx     -- raw ptr to the byte array
@@ -41,15 +48,30 @@ data PtrOrigin
   | CostCentreStackPtr              -- GHC Cmm STG machine's cost centre stack
   | StablePtr     Int              -- stable pointer must have AddrRep
   | LabelPtr      String LabelSpec  -- foreign symbol/label name + label sepcification (i.e. data or function)
---  deriving (Show, Eq, Ord)
+%runElab derive "PtrOrigin" [Show, Eq, Ord]
 
 public export
-IdT : Type
-IdT = Int -- TODO
+record IdT where
+  constructor MkId
+  binder : Binder
+
+export Show IdT where show i = i.binder.binderUniqueName
+export Eq   IdT where a == b = a.binder.binderUniqueName == b.binder.binderUniqueName -- TODO: use hash
+export Ord  IdT where compare a b = compare a.binder.binderUniqueName b.binder.binderUniqueName -- TODO: use hash
 
 public export
-DC : Type
-DC = Int -- TODO
+record DC where
+  constructor MkDC
+  datacon : DataCon
+
+export Show DC where show i = i.datacon.dcUniqueName
+export Eq   DC where a == b = a.datacon.dcUniqueName == b.datacon.dcUniqueName -- TODO: use hash
+export Ord  DC where compare a b = compare a.datacon.dcUniqueName b.datacon.dcUniqueName -- TODO: use hash
+
+export Show (Ptr Bits8) where show _ = "Ptr Bits8" -- TODO
+export Eq (Ptr Bits8) where a == b = True -- TODO
+export Ord (Ptr Bits8) where compare a b = EQ -- TODO
+
 
 -- TODO: detect coercions during the evaluation
 public export
@@ -57,7 +79,7 @@ data Atom     -- Q: should atom fit into a cpu register? A: yes
   = HeapPtr       Addr
   | Literal       Lit  -- TODO: remove this
   | Void
-  | PtrAtom       PtrOrigin (Ptr Bits8)
+  | PtrAtom       PtrOrigin Int -- TODO (Ptr Bits8)
   | IntAtom       Int
   | WordAtom      Bits64
   | FloatAtom     Double -- TODO
@@ -79,11 +101,15 @@ data Atom     -- Q: should atom fit into a cpu register? A: yes
   | LiftedUndefined
   | Rubbish
   | Unbinded          IdT -- program point that created this value (used for debug purposes)
---  deriving (Show, Eq, Ord)
+%runElab derive "Atom" [Show, Eq, Ord]
 
-CutShow : a -> a
-CutShow = id
+public export
+data CutShow a = MkCutShow a
+export Show (CutShow a) where show i = "CutShow"
+export (Eq k) => Eq (CutShow k) where (MkCutShow a) == (MkCutShow b) = a == b
+export (Ord k) => Ord (CutShow k) where compare (MkCutShow a) (MkCutShow b) = compare a b
 
+public export
 data StaticOrigin
   = SO_CloArg
   | SO_Let
@@ -92,9 +118,12 @@ data StaticOrigin
   | SO_TopLevel
   | SO_Builtin
   | SO_ClosureResult
---  deriving (Show, Eq, Ord)
+%runElab derive "StaticOrigin" [Show, Eq, Ord]
 
 Env = SortedMap IdT (StaticOrigin, Atom)   -- NOTE: must contain only the defined local variables
+
+export (Ord k, Ord v) => Ord (SortedMap k v) where compare a b = compare (kvList a) (kvList b)
+export (Ord k) => Ord (SortedSet k) where compare a b = compare (Prelude.toList a) (Prelude.toList b)
 
 StgRhsClosureT = Rhs  -- NOTE: must be StgRhsClosure only!
 
@@ -102,7 +131,7 @@ record TLogEntry where
   constructor MkTLogEntry
   tleObservedGlobalValue  : Atom
   tleCurrentLocalValue    : Atom
---  deriving (Show, Eq, Ord)
+%runElab derive "TLogEntry" [Show, Eq, Ord]
 
 TLog = SortedMap Int TLogEntry
 
@@ -113,7 +142,7 @@ data ScheduleReason
   | SR_ThreadFinishedFFICallback
   | SR_ThreadBlocked
   | SR_ThreadYield
---  deriving (Show, Eq, Ord)
+%runElab derive "ScheduleReason" [Show, Eq, Ord]
 
 public export
 data StackContinuation
@@ -142,8 +171,10 @@ data StackContinuation
   | KeepAlive     Atom
   -- ext stg interpreter debug related
   -- | DebugFrame    DebugFrame             -- for debug purposes, it does not required for STG evaluation
---  deriving (Show, Eq, Ord)
+--%runElab derive "StackContinuation" [Show]
+%runElab derive "StackContinuation" [Show, Eq, Ord]
 
+public export
 data HeapObject : Type where
   Con : (hoIsLNE : Bool) -> (hoCon : DC) -> (hoConArgs : List Atom) -> HeapObject
 
@@ -153,7 +184,7 @@ data HeapObject : Type where
     (hoCloBody     : CutShow StgRhsClosureT) ->
     (hoEnv         : Env) ->    -- local environment ; with live variables only, everything else is pruned
     (hoCloArgs     : List Atom) ->
-    (hoCloMissing  : Int) ->    -- HINT: this is a Thunk if 0 arg is missing ; if all is missing then Fun ; Pap is some arg is provided
+    (hoCloMissing  : Nat) ->    -- HINT: this is a Thunk if 0 arg is missing ; if all is missing then Fun ; Pap is some arg is provided
     HeapObject
 
   BlackHole : -- NOTE: each blackhole has exactly one corresponding thread and one update frame
@@ -165,12 +196,14 @@ data HeapObject : Type where
   ApStack : (hoResult : List Atom) -> (hoStack : List StackContinuation) -> HeapObject -- HINT: needed for the async exceptions
   RaiseException : Atom -> HeapObject
 --  deriving (Show, Eq, Ord)
+%runElab derive "HeapObject" [Show, Eq, Ord]
 
 
 data AsyncExceptionMask
   = NotBlocked
   | Blocked     Bool -- isInterruptible
 --  deriving (Eq, Ord, Show)
+%runElab derive "AsyncExceptionMask" [Show, Eq, Ord]
 
 -- NOTE: the BlockReason data type is some kind of reification of the blocked operation
 data BlockReason
@@ -184,6 +217,7 @@ data BlockReason
   | BlockedOnWrite        Int       -- file descriptor
   | BlockedOnDelay        (Clock UTC)   -- target time to wake up thread
 --  deriving (Eq, Ord, Show)
+%runElab derive "BlockReason" [Show, Eq, Ord]
 
 public export
 data ThreadStatus
@@ -192,6 +226,7 @@ data ThreadStatus
   | ThreadFinished  -- RTS name: ThreadComplete
   | ThreadDied      -- RTS name: ThreadKilled
 --  deriving (Eq, Ord, Show)
+%runElab derive "ThreadStatus" [Show, Eq, Ord]
 
 public export
 record ThreadState where
@@ -210,6 +245,7 @@ record ThreadState where
   -- STM
   tsActiveTLog        : (Maybe TLog) -- elems: (global value, local value)
   tsTLogStack         : List TLog
+%runElab derive "ThreadState" [Show, Eq, Ord]
 
 --  deriving (Eq, Ord, Show)
 
@@ -219,6 +255,7 @@ record WeakPtrDescriptor where
   wpdValue        : Maybe Atom -- live or dead
   wpdFinalizer    : Maybe Atom -- closure
   wpdCFinalizers  : List (Atom, Maybe Atom, Atom) -- fun, env ptr, data ptr
+%runElab derive "WeakPtrDescriptor" [Show, Eq, Ord]
 --  deriving (Show, Eq, Ord)
 
 record ByteArrayDescriptor where
@@ -228,16 +265,22 @@ record ByteArrayDescriptor where
   baaPinned           : Bool
   baaAlignment        : Int
 
+Show ByteArrayDescriptor where show _ = "ByteArrayDescriptor (TODO)"
+Eq ByteArrayDescriptor where _ == _ = True -- TODO
+Ord ByteArrayDescriptor where _ `compare` _ = EQ -- TODO
+
 record MVarDescriptor where
   constructor MkMVarDescriptor
   mvdValue    : Maybe Atom
   mvdQueue    : List Int -- thread id, blocking in this mvar ; this is required only for the fairness ; INVARIANT: BlockedOnReads are present at the beginning of the queue
+%runElab derive "MVarDescriptor" [Show, Eq, Ord]
 --  deriving (Show, Eq, Ord)
 
 record TVarDescriptor where
   constructor MkTVarDescriptor
   tvdValue  : Atom
   tvdQueue  : SortedSet Int -- thread id, STM wake up queue
+%runElab derive "TVarDescriptor" [Show, Eq, Ord]
 --  deriving (Show, Eq, Ord)
 
 Vector = List
@@ -376,6 +419,7 @@ record StgState where
   , ssDebugSettings       :: DebugSettings
 -}
 --  deriving (Show)
+%runElab derive "StgState" [Show]
 
 M = StateT StgState IO
 
@@ -516,6 +560,22 @@ emptyStgState = MkStgState
   , ssNextMutableArrayArray = 0
   }
 
+lookupEnvSO : Env -> Binder -> M (StaticOrigin, Atom)
+lookupEnvSO localEnv b = do
+  env <- if binderTopLevel b
+          then gets ssStaticGlobalEnv
+          else pure localEnv
+  let Nothing = lookup (MkId b) env
+        | Just a => pure a
+  case b.binderUniqueName of
+    -- HINT: GHC.Prim module does not exist it's a wired in module
+    "ghc-prim_GHC.Prim.void#"           => pure (SO_Builtin, Void)
+    "ghc-prim_GHC.Prim.realWorld#"      => pure (SO_Builtin, Void)
+    "ghc-prim_GHC.Prim.coercionToken#"  => pure (SO_Builtin, Void)
+    "ghc-prim_GHC.Prim.proxy#"          => pure (SO_Builtin, Void)
+    "ghc-prim_GHC.Prim.(##)"            => pure (SO_Builtin, Void)
+    _ => stgErrorM $ "unknown variable: " ++ show b
+
 export
 lookupEnv : Env -> Binder -> M Atom
---lookupEnv localEnv b = snd <$> lookupEnvSO localEnv b
+lookupEnv localEnv b = snd <$> lookupEnvSO localEnv b
