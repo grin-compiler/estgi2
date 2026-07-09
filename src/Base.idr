@@ -2,6 +2,7 @@ module Base
 
 import Derive.Prelude
 
+import System
 import System.Clock
 import Data.Buffer
 import Data.SortedSet
@@ -147,7 +148,7 @@ data ScheduleReason
 public export
 data StackContinuation
   -- basic block related
-  = CaseOf  Int IdT Env IdT (CutShow AltType) (CutShow $ List Alt)  -- closure addr & name (debug) ; pattern match on the result ; carries the closure's local environment
+  = CaseOf  Env IdT (CutShow AltType) (CutShow $ List Alt)  -- pattern match on the result ; carries the closure's local environment
   -- closure related
   | Update  Addr                         -- update Addr with the result heap object ; NOTE: maybe this is irrelevant as the closure interpreter will perform the update if necessary
   | Apply   (List Atom)                       -- apply args on the result heap object
@@ -249,6 +250,7 @@ record ThreadState where
 
 --  deriving (Eq, Ord, Show)
 
+public export
 record WeakPtrDescriptor where
   constructor MkWeakPtrDescriptor
   wpdKey          : Atom
@@ -496,6 +498,23 @@ switchToThread tid = do
 
 export
 stgErrorM : String -> M a
+stgErrorM s = lift $ die s -- pure $ assert_total $ idris_crash s
+{-
+stgErrorM msg = do
+  tid <- gets ssCurrentThreadId
+  liftIO $ do
+    putStrLn $ " * stgErrorM: " ++ show msg
+    putStrLn $ "current thread id: " ++ show tid
+  reportThread tid
+  curClosure <- gets ssCurrentClosure
+  liftIO $ do
+    putStrLn $ "current closure: " ++ show curClosure
+    putStrLn $ " * native estgi call stack:"
+    putStrLn $ prettyCallStack callStack
+  action <- unPrintable <$> gets ssStgErrorAction
+  action
+  error "stgErrorM"
+-}
 
 export
 getThreadState : Int -> M ThreadState
@@ -560,6 +579,7 @@ emptyStgState = MkStgState
   , ssNextMutableArrayArray = 0
   }
 
+export
 lookupEnvSO : Env -> Binder -> M (StaticOrigin, Atom)
 lookupEnvSO localEnv b = do
   env <- if binderTopLevel b
@@ -579,3 +599,45 @@ lookupEnvSO localEnv b = do
 export
 lookupEnv : Env -> Binder -> M Atom
 lookupEnv localEnv b = snd <$> lookupEnvSO localEnv b
+
+export
+stg_error : String -> M a
+stg_error = lift . die
+
+export
+readHeap : Atom -> M HeapObject
+readHeap (HeapPtr l) = do
+  h <- gets ssHeap
+  case lookup l h of
+    Nothing => stgErrorM $ "unknown heap address: " ++ show l
+    Just o  => pure o
+readHeap v = stg_error $ "readHeap: could not read heap object: " ++ show v
+
+export
+readHeapCon : Atom -> M HeapObject
+readHeapCon a = readHeap a >>= \o => case o of
+    Con{} => pure o
+    _     => stgErrorM $ "expected con but got: "-- ++ show o
+
+export
+addManyBindersToEnv : StaticOrigin -> List Binder -> List Atom -> Env -> Env
+addManyBindersToEnv so [] [] env = env
+addManyBindersToEnv so (b :: binders) (v :: values) env = addManyBindersToEnv so binders values $ insert (MkId b) (so, v) env
+addManyBindersToEnv so (b :: binders) values env = addManyBindersToEnv so binders values $ insert (MkId b) (so, Unbinded (MkId b)) env
+addManyBindersToEnv so binders values env = assert_total $ idris_crash $ "addManyBindersToEnv - length mismatch: " ++ show (so, [(MkId b, binderType b, binderTypeSig b) | b <- binders], values)
+
+export
+addBinderToEnv : StaticOrigin -> Binder -> Atom -> Env -> Env
+addBinderToEnv so b a = insert (MkId b) (so, a)
+
+export
+addZippedBindersToEnv : StaticOrigin -> List (Binder, Atom) -> Env -> Env
+addZippedBindersToEnv so bvList env = foldl (\e, (b, v) => insert (MkId b) (so, v) e) env bvList
+
+PrimOpEval = StgName -> List Atom -> StgType -> Maybe TyCon -> M (List Atom)
+
+export
+getCurrentThreadState : M ThreadState
+getCurrentThreadState = do
+  tid <- gets ssCurrentThreadId
+  getThreadState tid

@@ -362,7 +362,7 @@ data Lit
 public export
 data AltType' tcOcc
   = PolyAlt
-  | MultiValAlt Int
+  | MultiValAlt Nat
   | PrimAlt     PrimRep
   | AlgAlt      tcOcc
 --  deriving (Eq, Ord, Generic, Show)

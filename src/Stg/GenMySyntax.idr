@@ -175,6 +175,7 @@ procjson fname t = do
 
         type List a = [a]
         type Pair a b = (a, b)
+        type Nat = Int
 
         type StgName = String
         type IdInfo = String
