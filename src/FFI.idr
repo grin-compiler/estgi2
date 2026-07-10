@@ -2,11 +2,13 @@ module FFI
 
 import Control.Monad.State
 import Data.SortedSet
+import Data.SortedMap
 
 import Stg.Syntax
 import Stg.JSON
 import Base
 
+import Rts
 import FFI.Rts
 
 import GHC.Symbols
@@ -53,10 +55,20 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
               Nothing -> state $ \s@StgState{..} -> ([value], s {ssRtsSupport = ssRtsSupport {rtsGlobalStore = Map.insert foreignSymbol value store}})
               Just v  -> pure [v]
       -}
-      -- calls to GHC RTS
       StaticTarget _ foreignSymbol _ _ =>
-        if contains foreignSymbol rtsSymbolSet
-        then FFI.Rts.evalFCallOp evalOnNewThread fCall args t tc
+        -- GHC RTS global store getOrSet function implementation
+        if contains foreignSymbol globalStoreSymbols then do
+          let [value, Void] = args | _ => stgErrorM $ "unsupported StgFCallOp: " ++ show fCall ++ " :: " ++ show t ++ "\n args: " ++ show args
+          -- HINT: set once with the first value, then return it always, only for the globalStoreSymbols
+          store <- gets $ rtsGlobalStore . ssRtsSupport
+          case lookup foreignSymbol store of
+            Nothing => state $ \s => ({ssRtsSupport.rtsGlobalStore := insert foreignSymbol value store} s, [value])
+            Just v  => pure [v]
+
+        -- calls to GHC RTS
+        else if contains foreignSymbol rtsSymbolSet then do
+          FFI.Rts.evalFCallOp evalOnNewThread fCall args t tc
+
         else stgErrorM $ "unsupported StgFCallOp: " ++ show fCall ++ " :: " ++ show t ++ "\n args: " ++ show args
 
       {-

@@ -18,6 +18,7 @@ import PrimOp.Concurrency
 import PrimOp.WeakPointer
 import PrimOp.Array
 import PrimOp.MVar
+import PrimOp.Addr
 
 export
 gettops : Module -> List TopBinding
@@ -202,7 +203,9 @@ builtinStgEval so a@(HeapPtr l) = do
       mapM_ stackPush (reverse hoStack)
       pure hoResult
     RaiseException ex -> PrimExceptions.raiseEx ex
-    Con{}       -> pure [a]
+    -}
+    Con{}       => pure [a]
+    {-
     BlackHole{..} -> do
       let HeapPtr addr = a
       tid <- gets ssCurrentThreadId
@@ -223,6 +226,8 @@ builtinStgEval so a@(HeapPtr l) = do
 
         unless (length params == length hoCloArgs) $ do
           stgErrorM $ "builtinStgEval - Closure - length mismatch: " ++ show (params, hoCloArgs)
+
+        putStrLn $ show hoName
 
         -- TODO: env or free var handling
         case uf of
@@ -368,19 +373,15 @@ evalStackContinuation result = \case
       let [fun@(HeapPtr{})] = result
             | x => stg_error $ "expected HeapPtr: " ++ show x ++ ", result: " ++ show result
       builtinStgApply SO_ClosureResult fun args
-  {-
 
-  Update dstAddr
-    | [src@HeapPtr{}] <- result
-    -> do
-      wakeupBlackHoleQueueThreads dstAddr
-      o <- readHeap src
-      store dstAddr o
-      dynamicHeapStartAddr <- gets ssDynamicHeapStart
-      when (dstAddr < dynamicHeapStartAddr) $ do
-        modify' $ \s@StgState{..} -> s {ssCAFSet = IntSet.insert dstAddr ssCAFSet}
-      pure result
-  -}
+  --x => stg_error $ "unsupported continuation: " ++ show x ++ ", result: " ++ show result
+  Update dstAddr => do
+    let [src@(HeapPtr{})] = result | _ => stg_error $ "update - expected [HeapPtr{}], got: " ++ show result
+    wakeupBlackHoleQueueThreads dstAddr
+    o <- readHeap src
+    store dstAddr o
+    pure result
+
   -- HINT: STG IR uses 'case' expressions to chain instructions with strict evaluation
   CaseOf {-curClosureAddr curClosure-} localEnv resultId@(MkId resultBinder) (MkCutShow altType) (MkCutShow alts) => do
     assertWHNF result altType resultBinder
@@ -615,9 +616,7 @@ evalExpr localEnv = \case
   x => stg_error $ "unsupported expr: " ++ show x
 
 evalPrimOp =
-  {-
-  PrimAddr.evalPrimOp $
-  -}
+  PrimOp.Addr.evalPrimOp $
   PrimOp.Array.evalPrimOp $
   {-
   PrimSmallArray.evalPrimOp $

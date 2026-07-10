@@ -7,26 +7,25 @@ import Stg.Syntax
 import Stg.JSON
 import Base
 
-{-
-handleTakeMVar_ValueFullCase :: Int -> MVarDescriptor -> M ()
-handleTakeMVar_ValueFullCase m mvd@MVarDescriptor{..} = do
-  case mvdQueue of
-    [] -> do
+handleTakeMVar_ValueFullCase : Int -> MVarDescriptor -> M ()
+handleTakeMVar_ValueFullCase m mvd = do
+  case mvd.mvdQueue of
+    [] => do
       -- HINT: the queue is empty so there is nothing to do, just mark the mvar empty
-      modify' $ \s@StgState{..} -> s {ssMVars = IntMap.insert m (mvd {mvdValue = Nothing}) ssMVars }
+      modify {ssMVars $= insert m ({mvdValue := Nothing} mvd)}
 
-    tid : tidTail -> do
+    tid :: tidTail => do
       -- HINT: every blocked thread in the queue waits for an empty mvar to write their value in it
       -- NOTE: finished and dead threads are not present in the waiting queue
       -- wake up thread
       ts <- getThreadState tid
       case tsStatus ts of
-        ThreadBlocked (BlockedOnMVar _ (Just v)) -> do
-          updateThreadState tid (ts {tsStatus = ThreadRunning})
-          let newValue = mvd {mvdValue = Just v, mvdQueue = tidTail}
-          modify' $ \s@StgState{..} -> s {ssMVars = IntMap.insert m newValue ssMVars }
-        _ -> error $ "internal error - invalid thread status: " ++ show (tsStatus ts)
--}
+        ThreadBlocked (BlockedOnMVar _ (Just v)) => do
+          updateThreadState tid ({tsStatus := ThreadRunning} ts)
+          let newValue = {mvdValue := Just v, mvdQueue := tidTail} mvd
+          modify {ssMVars $= insert m newValue}
+        _ => stg_error $ "internal error - invalid thread status: " ++ show (tsStatus ts)
+
 handlePutMVar_ValueEmptyCase : Int -> MVarDescriptor -> Atom -> M ()
 handlePutMVar_ValueEmptyCase m mvd v = do
   -- HINT: first handle the blocked readMVar case, it does not consume the value
@@ -94,19 +93,18 @@ evalPrimOp fallback op args t tc = case (op, args) of
       let next  = s.ssNextMVar
           value = MkMVarDescriptor {mvdValue = Nothing, mvdQueue = []}
       in ({ssMVars $= insert next value, ssNextMVar := 1 + next} s, [MVar next]))
-  {-
+
   -- takeMVar# :: MVar# s a -> State# s -> (# State# s, a #)
-  ( "takeMVar#", [MVar m, _s]) -> do
-    reportOp op args
-    mvd@MVarDescriptor{..} <- lookupMVar m
+  ( "takeMVar#", [MVar m, st]) => do
+    mvd <- lookupMVar m
     --liftIO $ putStrLn $ "mvdValue: " ++ show mvdValue
-    case mvdValue of
-      Nothing -> do
+    case mvd.mvdValue of
+      Nothing => do
         -- block current thread on this MVar
         -- set blocked reason
         tid <- gets ssCurrentThreadId
         ts <- getCurrentThreadState
-        updateThreadState tid (ts {tsStatus = ThreadBlocked $ BlockedOnMVar m Nothing})
+        updateThreadState tid ({tsStatus := ThreadBlocked $ BlockedOnMVar m Nothing} ts)
         --liftIO $ putStrLn $ " * mvar block, blocked tid: " ++ show tid
 
         -- add to mvar's waiting queue
@@ -116,10 +114,10 @@ evalPrimOp fallback op args t tc = case (op, args) of
         stackPush $ RunScheduler SR_ThreadBlocked
         pure [] -- NOTE: the real return value will be calculated when the tread is unblocked
 
-      Just a -> do
+      Just a => do
         handleTakeMVar_ValueFullCase m mvd
         pure [a]
-
+{-
   -- tryTakeMVar# :: MVar# s a -> State# s -> (# State# s, Int#, a #)
   ( "tryTakeMVar#", [MVar m, _s]) -> do
     reportOp op args

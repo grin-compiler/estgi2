@@ -297,6 +297,72 @@ Stack = List StackContinuation
 
 
 public export
+record Rts where
+  constructor MkRts
+  {-
+  -- data constructors needed for FFI argument boxing from the base library
+  { rtsCharCon      :: DataCon
+  , rtsIntCon       :: DataCon
+  , rtsInt8Con      :: DataCon
+  , rtsInt16Con     :: DataCon
+  , rtsInt32Con     :: DataCon
+  , rtsInt64Con     :: DataCon
+  , rtsWordCon      :: DataCon
+  , rtsWord8Con     :: DataCon
+  , rtsWord16Con    :: DataCon
+  , rtsWord32Con    :: DataCon
+  , rtsWord64Con    :: DataCon
+  , rtsPtrCon       :: DataCon
+  , rtsFunPtrCon    :: DataCon
+  , rtsFloatCon     :: DataCon
+  , rtsDoubleCon    :: DataCon
+  , rtsStablePtrCon :: DataCon
+  , rtsTrueCon      :: DataCon
+  , rtsFalseCon     :: DataCon
+
+  -- closures used by FFI wrapper code ; heap address of the closure
+  , rtsUnpackCString              :: Atom
+  , rtsTopHandlerRunIO            :: Atom
+  , rtsTopHandlerRunNonIO         :: Atom
+  , rtsTopHandlerFlushStdHandles  :: Atom
+
+  -- closures used by the exception primitives
+  , rtsDivZeroException   :: Atom
+  , rtsUnderflowException :: Atom
+  , rtsOverflowException  :: Atom
+
+  -- closures used by the STM primitives
+  , rtsNestedAtomically   :: Atom -- (exception)
+
+  -- closures used by the GC deadlock detection
+  , rtsBlockedIndefinitelyOnMVar  :: Atom -- (exception)
+  , rtsBlockedIndefinitelyOnSTM   :: Atom -- (exception)
+  , rtsNonTermination             :: Atom -- (exception)
+
+  -- rts helper custom closures
+  , rtsApplyFun1Arg :: Atom
+  , rtsTuple2Proj0  :: Atom
+  -}
+  -- builtin special store, see FFI (i.e. getOrSetGHCConcSignalSignalHandlerStore)
+  rtsGlobalStore  : SortedMap StgName Atom
+  {-
+  -- program contants
+  , rtsProgName     :: String
+  , rtsProgArgs     :: [String]
+
+  -- native C data symbols
+  , rtsDataSymbol_enabled_capabilities  :: Ptr CInt
+  }
+  deriving (Show)
+  -}
+%runElab derive "Rts" [Show]
+
+emptyRts : Rts
+emptyRts = MkRts
+  { rtsGlobalStore  = empty
+  }
+
+public export
 record StgState where
   constructor MkStgState
   ssHeap                : Heap
@@ -367,10 +433,10 @@ record StgState where
 
   -- FFI + createAdjustor
   , ssCWrapperHsTypeMap   :: !(Map Name (Bool, Name, [Name]))
-
+-}
   -- RTS related
-  , ssRtsSupport          :: Rts
-
+  ssRtsSupport            : Rts
+{-
   -- debug
   , ssIsQuiet             :: Bool
   , ssLocalEnv            :: [Atom]
@@ -587,6 +653,7 @@ emptyStgState = MkStgState
   , ssNextSmallMutableArray = 0
   , ssNextArrayArray        = 0
   , ssNextMutableArrayArray = 0
+  , ssRtsSupport            = emptyRts
   }
 
 export
@@ -667,3 +734,16 @@ lookupMVar m = do
   lookup m <$> gets ssMVars >>= \case
     Nothing => stgErrorM $ "unknown MVar: " ++ show m
     Just a  => pure a
+
+export
+wakeupBlackHoleQueueThreads : Int -> M ()
+wakeupBlackHoleQueueThreads addr = do
+  BlackHole hoBHOwnerThreadId hoBHOriginalThunk hoBHWaitQueue <- readHeap (HeapPtr addr)
+    | x => stg_error $ "internal error - expected BlackHole, got: " ++ show x
+  -- wake up blocked threads
+  for_ hoBHWaitQueue $ \waitingTid => do
+    waitingTS <- getThreadState waitingTid
+    case tsStatus waitingTS of
+      ThreadBlocked (BlockedOnBlackHole dstAddr) => do
+        updateThreadState waitingTid ({tsStatus := ThreadRunning} waitingTS)
+      _ => stg_error $ "internal error - invalid thread status: " ++ show (tsStatus waitingTS)

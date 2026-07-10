@@ -37,5 +37,6 @@ TODO:
   done - bind top binders
   done - implement stack continuation machinery
   done - implement expression evaluation
-  - port Symbols.hs
-  - implement ffi machinery
+  done - port Symbols.hs
+  done - implement ffi machinery
+  - use mangled show for unique
