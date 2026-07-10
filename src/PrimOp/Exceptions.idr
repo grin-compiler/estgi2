@@ -6,6 +6,8 @@ import Stg.Syntax
 import Stg.JSON
 import Base
 
+import PrimOp.Concurrency
+
 export
 evalPrimOp : PrimOpEval -> StgName -> List Atom -> StgType -> Maybe TyCon -> M (List Atom)
 evalPrimOp fallback op args t tc = case (op, args) of
@@ -55,5 +57,38 @@ evalPrimOp fallback op args t tc = case (op, args) of
     -- run action
     stackPush $ Apply [w]
     pure [f]
+
+  -- unmaskAsyncExceptions# :: (State# RealWorld -> (# State# RealWorld, a #)) -> State# RealWorld -> (# State# RealWorld, a #)
+  ( "unmaskAsyncExceptions#", [f, w]) => do
+
+    -- get async exception masking state
+    ts <- getCurrentThreadState
+    tid <- gets ssCurrentThreadId
+
+    case tsBlockedExceptions ts of
+      (thowingTid, exception) :: waitingTids
+        => do
+          -- try wake up thread
+          throwingTS <- getThreadState thowingTid
+          when (tsStatus throwingTS == ThreadBlocked (BlockedOnThrowAsyncEx tid)) $ do
+            updateThreadState thowingTid $ {tsStatus := ThreadRunning} throwingTS
+          -- raise exception
+          ts <- getCurrentThreadState
+          updateThreadState tid $ {tsBlockedExceptions := waitingTids} ts
+          -- run action
+          stackPush $ Apply [w] -- HINT: the stack may be captured by ApStack if there is an Update frame,
+                                --        so we have to setup the continuation properly
+          PrimOp.Concurrency.raiseAsyncEx [f] tid exception
+          pure []
+      [] => do
+          -- set new masking state
+          unless (tsBlockExceptions ts == False && tsInterruptible ts == False) $ do
+            updateThreadState tid $ {tsBlockExceptions := False, tsInterruptible := False} ts
+            --liftIO $ putStrLn $ "set mask - " ++ show tid ++ " unmaskAsyncExceptions# b:False i:False"
+            stackPush $ RestoreExMask (False, False) (tsBlockExceptions ts) (tsInterruptible ts)
+          pure ()
+          -- run action
+          stackPush $ Apply [w]
+          pure [f]
 
   _ => fallback op args t tc

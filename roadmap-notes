@@ -39,4 +39,6 @@ TODO:
   done - implement expression evaluation
   done - port Symbols.hs
   done - implement ffi machinery
-  - use mangled show for unique
+  done - use mangled show for unique
+  - implement cbits.so loading
+  - implement ffi calling

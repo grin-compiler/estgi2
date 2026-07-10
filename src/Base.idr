@@ -747,3 +747,31 @@ wakeupBlackHoleQueueThreads addr = do
       ThreadBlocked (BlockedOnBlackHole dstAddr) => do
         updateThreadState waitingTid ({tsStatus := ThreadRunning} waitingTS)
       _ => stg_error $ "internal error - invalid thread status: " ++ show (tsStatus waitingTS)
+
+export
+lookupArray : Int -> M (Vector Atom)
+lookupArray m = do
+  lookup m <$> gets ssArrays >>= \case
+    Nothing => stgErrorM $ "unknown Array: " ++ show m
+    Just a  => pure a
+
+export
+lookupMutableArray : Int -> M (Vector Atom)
+lookupMutableArray m = do
+  lookup m <$> gets ssMutableArrays >>= \case
+    Nothing => stgErrorM $ "unknown MutableArray: " ++ show m
+    Just a  => pure a
+
+export
+allocAndStore : HeapObject -> M Addr
+allocAndStore o = do
+  a <- freshHeapAddress
+  store a o
+  pure a
+
+export
+lookupMutVar : Int -> M Atom
+lookupMutVar m = do
+  lookup m <$> gets ssMutVars >>= \case
+    Nothing => stgErrorM $ "unknown MutVar: " ++ show m
+    Just a  => pure a

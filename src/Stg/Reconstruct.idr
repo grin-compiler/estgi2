@@ -74,10 +74,10 @@ mkBinderUniqueName isTopLevel (MkUnitId unitId) (MkModuleName modName) (MkSBinde
     then "main_:Main.main"
     else case sbinderScope of
       ModulePublic    => unitId ++ "_" ++ modName ++ "." ++ sbinderName
-      ModulePrivate   => unitId ++ "_" ++ modName ++ "." ++ sbinderName ++ singleton '_' ++ show u
+      ModulePrivate   => unitId ++ "_" ++ modName ++ "." ++ sbinderName ++ singleton '_' ++ ppUnique u
       ClosurePrivate  => if isTopLevel || True
-                          then unitId ++ "_" ++ modName ++ "." ++ sbinderName ++ singleton '_' ++ show u
-                          else sbinderName ++ singleton '_' ++ show u
+                          then unitId ++ "_" ++ modName ++ "." ++ sbinderName ++ singleton '_' ++ ppUnique u
+                          else sbinderName ++ singleton '_' ++ ppUnique u
 
 -- "recon" == "reconstruct"
 reconLocalBinder : BinderMap -> SBinder -> Binder

@@ -8,18 +8,18 @@ import Stg.Syntax
 import Stg.JSON
 import Base
 
-{-
-lookupArrIdx :: ArrIdx -> M (V.Vector Atom)
-lookupArrIdx = \case
-  MutArrIdx i -> lookupMutableArray i
-  ArrIdx    i -> lookupArray i
 
-updateArrIdx :: ArrIdx -> V.Vector Atom -> M ()
+lookupArrIdx : ArrIdxT -> M (Array Atom)
+lookupArrIdx = \case
+  MutArrIdx i => lookupMutableArray i
+  ArrIdx    i => lookupArray i
+
+updateArrIdx : ArrIdxT -> Array Atom -> M ()
 updateArrIdx m v = do
-  modify' $ \s@StgState{..} -> case m of
-    MutArrIdx n -> s { ssMutableArrays = IntMap.insert n v ssMutableArrays }
-    ArrIdx    n -> s { ssArrays        = IntMap.insert n v ssArrays }
--}
+  modify $ \s => case m of
+    MutArrIdx n => { ssMutableArrays $= insert n v } s
+    ArrIdx    n => { ssArrays        $= insert n v } s
+
 export
 evalPrimOp : PrimOpEval -> StgName -> List Atom -> StgType -> Maybe TyCon -> M (List Atom)
 evalPrimOp fallback op args t tc = case (op, args) of
@@ -31,18 +31,18 @@ evalPrimOp fallback op args t tc = case (op, args) of
     modify {ssMutableArrays $= insert next v, ssNextMutableArray := 1 + next}
     pure [MutableArray $ MutArrIdx next]
 
-  {-
   -- readArray# :: MutableArray# s a -> Int# -> State# s -> (# State# s, a #)
-  ( "readArray#", [MutableArray a, IntV i, _s]) -> do
+  ( "readArray#", [MutableArray a, IntAtom i, st]) => do
     v <- lookupArrIdx a
-    pure [v V.! i]
+    pure [atNat  v.arr (cast i) {lt = believe_me 0}]
 
   -- writeArray# :: MutableArray# s a -> Int# -> a -> State# s -> State# s
-  ( "writeArray#", [MutableArray m, IntV i, a, _s]) -> do
+  ( "writeArray#", [MutableArray m, IntAtom i, a, st]) => do
     v <- lookupArrIdx m
-    updateArrIdx m (v V.// [(i, a)])
+    let Just ix = natToFin (cast i) v.size | _ => stg_error "array bound"
+    updateArrIdx m (A v.size (setAt ix a v.arr))
     pure []
-
+{-
   -- sizeofArray# :: Array# a -> Int#
   ( "sizeofArray#", [Array a]) -> do
     v <- lookupArrIdx a

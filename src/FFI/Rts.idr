@@ -105,9 +105,9 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
           pure [Int32V $ if id1 == id2 then 1 else 0]
 
       StaticTarget _ "getRTSStatsEnabled" _ _ -> pure [IntV 0]
-
-      StaticTarget _ "stg_sig_install" _ _ -> pure [IntV (-1)]                          -- TODO: for testsuite
-
+      -}
+      StaticTarget _ "stg_sig_install" _ _ => pure [IntAtom (-1)]                          -- TODO: for testsuite
+      {-
       StaticTarget _ "lockFile" _ _
         | [Word64V id, Word64V dev, Word64V ino, Int32V for_writing, Void] <- args
         , UnboxedTuple [Int32Rep] <- t

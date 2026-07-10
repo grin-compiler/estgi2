@@ -21,3 +21,6 @@ evalPrimOp fallback op args t tc = case (op, args) of
     pure []
 
   _ => fallback op args t tc
+
+export
+raiseAsyncEx : List Atom -> Int -> Atom -> M ()

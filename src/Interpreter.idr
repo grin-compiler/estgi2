@@ -19,6 +19,9 @@ import PrimOp.WeakPointer
 import PrimOp.Array
 import PrimOp.MVar
 import PrimOp.Addr
+import PrimOp.Int
+import PrimOp.Int32
+import PrimOp.MutVar
 
 export
 gettops : Module -> List TopBinding
@@ -71,7 +74,7 @@ storeRhs isLetNoEscape localEnv i addr = \case
 
   cl@(StgRhsClosure freeVars _ paramNames _) => do
     let liveSet   = fromList $ map MkId freeVars
-        prunedEnv = intersectionMap localEnv liveSet -- HINT: do pruning to keep only the live/later referred variables
+        prunedEnv = localEnv -- TODO: implement stg live var analysis ; intersectionMap localEnv liveSet -- HINT: do pruning to keep only the live/later referred variables
     store addr (Closure isLetNoEscape (MkId i) (MkCutShow cl) prunedEnv [] (length paramNames))
 
 export
@@ -426,34 +429,33 @@ evalStackContinuation result = \case
         - }
         setProgramPoint . PP_StgPoint $ SP_AltExpr (binderToStgId resultBinder) 0
         evalExpr extendedEnv altRHS
-
-  s@(RestoreExMask oldMask blockAsyncEx isInterruptible) -> do
+-}
+  s@(RestoreExMask oldMask blockAsyncEx isInterruptible) => do
     tid <- gets ssCurrentThreadId
     ts <- getCurrentThreadState
-    updateThreadState tid $ ts {tsBlockExceptions = blockAsyncEx, tsInterruptible = isInterruptible}
+    updateThreadState tid $ {tsBlockExceptions := blockAsyncEx, tsInterruptible := isInterruptible} ts
     case tsBlockedExceptions ts of
-      (thowingTid, exception) : waitingTids
-        | blockAsyncEx == False
-        -> do
+      (thowingTid, exception) :: waitingTids =>
+        when (blockAsyncEx == False) $ do
           -- try wake up thread
           throwingTS <- getThreadState thowingTid
           when (tsStatus throwingTS == ThreadBlocked (BlockedOnThrowAsyncEx tid)) $ do
-            updateThreadState thowingTid throwingTS {tsStatus = ThreadRunning}
+            updateThreadState thowingTid $ {tsStatus := ThreadRunning} throwingTS
           -- raise exception
           ts <- getCurrentThreadState
-          updateThreadState tid ts {tsBlockedExceptions = waitingTids}
-          PrimConcurrency.raiseAsyncEx result tid exception
-      _ -> pure ()
+          updateThreadState tid $ {tsBlockedExceptions := waitingTids} ts
+          PrimOp.Concurrency.raiseAsyncEx result tid exception
+      _ => pure ()
     pure result
 
-  Catch h b i -> do
+  Catch h b i => do
     -- TODO: is anything to do??
     -- assert if current mask is the same as the one in stack frame
-    ts@ThreadState{..} <- getCurrentThreadState
-    when (tsBlockExceptions /= b || tsInterruptible /= i) $ do
-      error $ "Catch frame assertion failure - ex mask mismatch, expected: " ++ show (b, i) ++ " got: " ++ show (tsBlockExceptions, tsInterruptible)
+    ts <- getCurrentThreadState
+    when (ts.tsBlockExceptions /= b || ts.tsInterruptible /= i) $ do
+      stg_error $ "Catch frame assertion failure - ex mask mismatch, expected: " ++ show (b, i) ++ " got: " ++ show (ts.tsBlockExceptions, ts.tsInterruptible)
     pure result
-  -}
+
   {-
   Atomically stmAction -> PrimSTM.commitOrRestart stmAction result
 
@@ -505,19 +507,17 @@ evalPrimOp : StgName -> List Atom -> StgType -> Maybe TyCon -> M (List Atom)
 evalExpr localEnv = \case
   StgTick _ e       => evalExpr localEnv e
   StgLit l          => pure <$> evalLiteral l
-  {-
-  StgConApp dc l _
+
+  StgConApp dc l _ => case dcRep dc of
     -- HINT: make and return unboxed tuple
-    | UnboxedTupleCon{} <- dcRep dc
-    -> mapM (evalArg localEnv) l   -- Q: is this only for unboxed tuple? could datacon be heap allocated?
+    UnboxedTupleCon{} => traverse (evalArg localEnv) l   -- Q: is this only for unboxed tuple? could datacon be heap allocated?
 
     -- HINT: create boxed datacon on the heap
-    | otherwise
-    -> do
-      args <- mapM (evalArg localEnv) l
-      loc <- allocAndStore (Con False (DC dc) args)
+    _ => do
+      args <- traverse (evalArg localEnv) l
+      loc <- allocAndStore (Con False (MkDC dc) args)
       pure [HeapPtr loc]
-  -}
+
   StgLet b e => do
     extendedEnv <- declareBinding False localEnv b
     evalExpr extendedEnv e
@@ -634,12 +634,14 @@ evalPrimOp =
   PrimFloat.evalPrimOp $
   PrimDouble.evalPrimOp $
   PrimInt64.evalPrimOp $
-  PrimInt32.evalPrimOp $
+  -}
+  PrimOp.Int32.evalPrimOp $
+  {-
   PrimInt16.evalPrimOp $
   PrimInt8.evalPrimOp $
-  PrimInt.evalPrimOp $
-  PrimMutVar.evalPrimOp $
   -}
+  PrimOp.Int.evalPrimOp $
+  PrimOp.MutVar.evalPrimOp $
   PrimOp.MVar.evalPrimOp $
   {-
   PrimNarrowings.evalPrimOp $

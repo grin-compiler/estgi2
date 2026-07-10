@@ -1,5 +1,7 @@
 module Stg.Syntax
 
+import Data.String
+
 --import JSON.Simple.Derive
 --import Derive.FromJSON.Simple
 
@@ -85,20 +87,23 @@ base62ToInt numStr = sum
   ]
  where
   chars62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-intToBase62 :: Int -> String
-intToBase62 n_ = go n_ "" where
-  go n cs | n < 62
-          = let c = chooseChar62 n in c : cs
-          | otherwise
-          = go q (c1 : cs) where (q, r) = quotRem n 62
-                                 c1 = chooseChar62 r
-
-  chooseChar62 :: Int -> Char
-  chooseChar62 n = chars62 !! n
-  chars62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
 -}
+export
+intToBase62 : Int -> String
+intToBase62 n_ = go n_ "" where
+
+  chooseChar62 : Int -> String
+  chooseChar62 n = singleton $ assert_total $ strIndex "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ" n
+
+  go : Int -> String -> String
+  go n cs = if n < 62 then chooseChar62 n ++ cs
+                      else go (n `div` 62) (chooseChar62 (n `mod` 62) ++ cs)
+
+
+export
+ppUnique : Unique -> String
+ppUnique (MkUnique c i) = singleton c ++ intToBase62 i
+
 -- source location related
 
 public export
