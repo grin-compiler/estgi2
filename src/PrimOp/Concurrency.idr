@@ -15,4 +15,9 @@ evalPrimOp fallback op args t tc = case (op, args) of
     tid <- gets ssCurrentThreadId
     pure [ThreadId tid]
 
+  -- noDuplicate# :: State# s -> State# s
+  ( "noDuplicate#", [st]) => do
+    -- NOTE: the stg interpreter is not parallel, so this is a no-op
+    pure []
+
   _ => fallback op args t tc

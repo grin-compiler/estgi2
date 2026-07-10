@@ -10,10 +10,14 @@ import Stg.Syntax
 import Stg.JSON
 
 import Base
+import FFI
 
+import PrimOp.StablePointer
 import PrimOp.Exceptions
 import PrimOp.Concurrency
 import PrimOp.WeakPointer
+import PrimOp.Array
+import PrimOp.MVar
 
 export
 gettops : Module -> List TopBinding
@@ -574,42 +578,31 @@ evalExpr localEnv = \case
   StgOpApp (StgPrimOp op) l t tc => do
     args <- traverse (evalArg localEnv) l
     evalPrimOp op args t tc
-{-
-  StgOpApp (StgFCallOp foreignCall) l t tc -> do
-    -- check foreign target region and breakpoint
-    case foreignCTarget foreignCall of
-      StaticTarget _ targetName _ _ -> do
-        Debugger.checkBreakpoint (envToAtoms localEnv) $ BkpFFISymbol targetName
-        Debugger.checkRegion targetName
-      _ -> pure ()
 
-    markFFI foreignCall
-    args <- case foreignCTarget foreignCall of
-      StaticTarget _ "createAdjustor" _ _
+  StgOpApp (StgFCallOp foreignCall@(MkForeignCall foreignCTarget foreignCConv foreignCSafety)) l t tc => do
+    args <- case foreignCTarget of
+      StaticTarget _ "createAdjustor" _ _ => case l of
         -- void* createAdjustor (int cconv, StgStablePtr hptr, StgFunPtr wptr, char *typeString);
-        | [arg0_cconv, arg1_hptr, StgLitArg arg2_wptr, arg3_typeString, arg4_void] <- l
-        -> do
+        [arg0_cconv, arg1_hptr, StgLitArg arg2_wptr, arg3_typeString, arg4_void] => do
             -- HINT:
             --  do not resolve the wrapper function label
             --  the label name is used for FFI type signature lookup
-            [arg0_cconvAtom, arg1_hptrAtom, arg3_typeStringAtom, arg4_voidAtom] <- mapM (evalArg localEnv) [arg0_cconv, arg1_hptr, arg3_typeString, arg4_void]
+            [arg0_cconvAtom, arg1_hptrAtom, arg3_typeStringAtom, arg4_voidAtom] <- traverse (evalArg localEnv) [arg0_cconv, arg1_hptr, arg3_typeString, arg4_void]
+              | _ => ?impossible_ffi_args
             pure [arg0_cconvAtom, arg1_hptrAtom, Literal arg2_wptr, arg3_typeStringAtom, arg4_voidAtom]
-      StaticTarget _ "createAdjustor" _ _
-        -> do
-            liftIO $ do
+        _ => do
+            lift $ do
               putStrLn "illegal createAdjustor call:"
               putStrLn $ "  foreignCall: " ++ show foreignCall
               putStrLn $ "  type:        " ++ show t
               putStrLn   "  args:"
-              forM_ l $ \a -> do
+              for_ l $ \a => do
                 putStrLn $ "    " ++ show a
             stgErrorM $ "illegal createAdjustor call"
-      _ -> mapM (evalArg localEnv) l
-    --mylog $ show ("executing", foreignCall, args)
-    result <- evalFCallOp evalOnNewThread foreignCall args t tc
-    --mylog $ show (foreignCall, args, result)
-    pure result
+      _ => traverse (evalArg localEnv) l
+    evalFCallOp evalOnNewThread foreignCall args t tc
 
+{-
   StgOpApp (StgPrimCallOp primCall) l t tc -> do
     markPrimCall primCall
     args <- mapM (evalArg localEnv) l
@@ -624,7 +617,9 @@ evalExpr localEnv = \case
 evalPrimOp =
   {-
   PrimAddr.evalPrimOp $
-  PrimArray.evalPrimOp $
+  -}
+  PrimOp.Array.evalPrimOp $
+  {-
   PrimSmallArray.evalPrimOp $
   PrimArrayArray.evalPrimOp $
   PrimByteArray.evalPrimOp $
@@ -645,10 +640,14 @@ evalPrimOp =
   PrimInt8.evalPrimOp $
   PrimInt.evalPrimOp $
   PrimMutVar.evalPrimOp $
-  PrimMVar.evalPrimOp $
+  -}
+  PrimOp.MVar.evalPrimOp $
+  {-
   PrimNarrowings.evalPrimOp $
   PrimPrefetch.evalPrimOp $
-  PrimStablePointer.evalPrimOp $
+  -}
+  PrimOp.StablePointer.evalPrimOp $
+  {-
   PrimSTM.evalPrimOp $
   -}
   PrimOp.WeakPointer.evalPrimOp $

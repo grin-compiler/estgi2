@@ -30,10 +30,12 @@ TODO:
         done + port Reconstruct.hs
         done + use record types in high level idris extstg data types
     B) use dependent types where it helps
-  - use custom eq and ord instances based on unique names
+  done - use custom eq and ord instances based on unique names for IdT and DC
 
 TODO:
-  - efficient binder lookup
-  - bind top binders
-  - implement stack continuation machinery
-  - implement expression evaluation
+  done - efficient binder lookup
+  done - bind top binders
+  done - implement stack continuation machinery
+  done - implement expression evaluation
+  - port Symbols.hs
+  - implement ffi machinery

@@ -14,6 +14,7 @@ authors = "Csaba Hruska"
 
 -- packages to add to search path
 depends    = json-aeson
+           , array
 
 -- modules to install
 -- modules =

@@ -11,6 +11,7 @@ import Stg.Syntax
 import Stg.JSON
 import Control.Monad.State
 import Data.List
+import Data.Array
 
 %hide Language.Reflection.TTImp.AltType
 
@@ -18,16 +19,19 @@ import Data.List
 
 Addr = Int
 
+public export
 data ArrIdxT
   = MutArrIdx Int
   | ArrIdx    Int
 %runElab derive "ArrIdxT" [Show, Eq, Ord]
 
+public export
 data SmallArrIdxT
   = SmallMutArrIdx Int
   | SmallArrIdx    Int
 %runElab derive "SmallArrIdxT" [Show, Eq, Ord]
 
+public export
 data ArrayArrIdxT
   = ArrayMutArrIdx Int
   | ArrayArrIdx    Int
@@ -207,6 +211,7 @@ data AsyncExceptionMask
 %runElab derive "AsyncExceptionMask" [Show, Eq, Ord]
 
 -- NOTE: the BlockReason data type is some kind of reification of the blocked operation
+public export
 data BlockReason
   = BlockedOnMVar         Int (Maybe Atom) -- mvar id, the value that need to put to mvar in case of blocking putMVar#, in case of takeMVar this is Nothing
   | BlockedOnMVarRead     Int       -- mvar id
@@ -271,6 +276,7 @@ Show ByteArrayDescriptor where show _ = "ByteArrayDescriptor (TODO)"
 Eq ByteArrayDescriptor where _ == _ = True -- TODO
 Ord ByteArrayDescriptor where _ `compare` _ = EQ -- TODO
 
+public export
 record MVarDescriptor where
   constructor MkMVarDescriptor
   mvdValue    : Maybe Atom
@@ -285,7 +291,7 @@ record TVarDescriptor where
 %runElab derive "TVarDescriptor" [Show, Eq, Ord]
 --  deriving (Show, Eq, Ord)
 
-Vector = List
+Vector = Data.Array.Indexed.Array
 Heap = SortedMap Int HeapObject
 Stack = List StackContinuation
 
@@ -524,6 +530,10 @@ getThreadState tid = do
   pure a
 
 export
+updateThreadState : Int -> ThreadState -> M ()
+updateThreadState tid ts = modify {ssThreads $= insert tid ts}
+
+export
 isThreadLive : ThreadStatus -> Bool
 isThreadLive = \case
   ThreadFinished  => False
@@ -641,3 +651,19 @@ getCurrentThreadState : M ThreadState
 getCurrentThreadState = do
   tid <- gets ssCurrentThreadId
   getThreadState tid
+
+EvalOnNewThread = M (List Atom) -> M (List Atom)
+
+export
+lookupWeakPointerDescriptor : Int -> M WeakPtrDescriptor
+lookupWeakPointerDescriptor wpId = do
+  lookup wpId <$> gets ssWeakPointers >>= \case
+    Nothing => stgErrorM $ "unknown WeakPointer: " ++ show wpId
+    Just a  => pure a
+
+export
+lookupMVar : Int -> M MVarDescriptor
+lookupMVar m = do
+  lookup m <$> gets ssMVars >>= \case
+    Nothing => stgErrorM $ "unknown MVar: " ++ show m
+    Just a  => pure a
