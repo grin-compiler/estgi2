@@ -41,4 +41,6 @@ TODO:
   done - implement ffi machinery
   done - use mangled show for unique
   - implement cbits.so loading
-  - implement ffi calling
+  done - implement ffi calling
+  done - implement top level string literal handling
+  done - implement eval lit label ; evalLiteral

@@ -2,6 +2,7 @@ module Base
 
 import Derive.Prelude
 
+import public Data.Primitives.Interpolation
 import System
 import System.Clock
 import Data.Buffer
@@ -37,6 +38,7 @@ data ArrayArrIdxT
   | ArrayArrIdx    Int
 %runElab derive "ArrayArrIdxT" [Show, Eq, Ord]
 
+public export
 record ByteArrayIdx where
   constructor MkByteArrayIdx
   baId        : Int
@@ -265,6 +267,7 @@ record WeakPtrDescriptor where
 %runElab derive "WeakPtrDescriptor" [Show, Eq, Ord]
 --  deriving (Show, Eq, Ord)
 
+public export
 record ByteArrayDescriptor where
   constructor MkByteArrayDescriptor
   baaMutableByteArray : Buffer
@@ -515,23 +518,27 @@ freshHeapAddress = state $ \s => ({ssNextHeapAddr $= (+) 1} s, s.ssNextHeapAddr)
 export
 store : Addr -> HeapObject -> M ()
 store a o = modify {ssHeap $= insert a o}
-{-
+
 -- TODO: Q: how to implement pointer arithmetics and how to handle string constants and string literal pointers?
 
 -- string constants
 -- NOTE: the string gets extended with a null terminator
+
+%foreign "scheme:string->foreign-buffer"
+prim_allocString : String -> PrimIO Int
+
+export
 getCStringConstantPtrAtom : String -> M Atom
 getCStringConstantPtrAtom key = do
   strMap <- gets ssCStringConstants
   case lookup key strMap of
-    Just a  -> pure a
-    Nothing -> do
-      let bsCString = BS8.snoc key '\0'
-          (bsFPtr, bsOffset, _bsLen) = BS.toForeignPtr bsCString
-          a = PtrAtom (CStringPtr bsCString) $ plusPtr (unsafeForeignPtrToPtr bsFPtr) bsOffset
-      modify' $ \s -> s {ssCStringConstants = Map.insert key a strMap}
+    Just a  => pure a
+    Nothing => do
+      let bsCString = key ++ "\0"-- zero ending is added in scheme
+      v <- lift $ primIO $ prim_allocString bsCString
+      let a = PtrAtom (CStringPtr bsCString) v
+      modify {ssCStringConstants $= insert key a}
       pure a
--}
 
 export
 mylog : String -> M ()
@@ -774,4 +781,11 @@ lookupMutVar : Int -> M Atom
 lookupMutVar m = do
   lookup m <$> gets ssMutVars >>= \case
     Nothing => stgErrorM $ "unknown MutVar: " ++ show m
+    Just a  => pure a
+
+export
+lookupByteArrayDescriptor : Int -> M ByteArrayDescriptor
+lookupByteArrayDescriptor m = do
+  lookup m <$> gets ssMutableByteArrays >>= \case
+    Nothing => stgErrorM $ "unknown ByteArrayDescriptor: " ++ show m
     Just a  => pure a

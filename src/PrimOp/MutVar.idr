@@ -22,4 +22,10 @@ evalPrimOp fallback op args t tc = case (op, args) of
     a <- lookupMutVar m
     pure [a]
 
+  -- writeMutVar# :: MutVar# s a -> a -> State# s -> State# s
+  ( "writeMutVar#", [MutVar m, a, st]) => do
+    _ <- lookupMutVar m -- check existence
+    modify {ssMutVars $= insert m a}
+    pure []
+
   _ => fallback op args t tc

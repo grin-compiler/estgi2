@@ -121,9 +121,9 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
         -> do
           result <- liftIO $ unlockFile (fromIntegral id)
           pure [Int32V $ fromIntegral result]
-
-      StaticTarget _ "rtsSupportsBoundThreads" _ _ -> pure [IntV 0]
-
+      -}
+      StaticTarget _ "rtsSupportsBoundThreads" _ _ => pure [IntAtom 0]
+      {-
       StaticTarget _ "getMonotonicNSec" _ _
         | [Void] <- args
         -> do

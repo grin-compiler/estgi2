@@ -24,7 +24,7 @@ main = Main
 
 -- name of executable
 executable = "estgi2"
--- opts =
+opts = "--directive extraRuntime=extra.ss"
 sourcedir = "src"
 -- builddir =
 -- outputdir =

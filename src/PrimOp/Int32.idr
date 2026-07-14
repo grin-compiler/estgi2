@@ -8,9 +8,18 @@ import Base
 
 export
 evalPrimOp : PrimOpEval -> StgName -> List Atom -> StgType -> Maybe TyCon -> M (List Atom)
-evalPrimOp fallback op args t tc = case (op, args) of
+evalPrimOp fallback op args t tc = do
+ let
+    i32 : Int -> Int32
+    i32  = cast
+    i : Int32 -> Int
+    i   = cast
+ case (op, args) of
 
   -- int32ToInt# :: Int32# -> Int#
   ( "int32ToInt#",    [IntAtom a])           => pure [IntAtom a]
+
+  -- intToInt32# :: Int# -> Int32#
+  ( "intToInt32#",    [IntAtom a])           => pure [IntAtom . i $ i32 a]
 
   _ => fallback op args t tc

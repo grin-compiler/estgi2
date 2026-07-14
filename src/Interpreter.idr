@@ -19,9 +19,17 @@ import PrimOp.WeakPointer
 import PrimOp.Array
 import PrimOp.MVar
 import PrimOp.Addr
+import PrimOp.Char
 import PrimOp.Int
+import PrimOp.Int8
 import PrimOp.Int32
+import PrimOp.Int64
+import PrimOp.Word
+import PrimOp.Word8
+import PrimOp.Word64
 import PrimOp.MutVar
+import PrimOp.ByteArray
+import PrimOp.ObjectLifetime
 
 export
 gettops : Module -> List TopBinding
@@ -40,10 +48,8 @@ gettops (MkModule
 
 evalLiteral : Lit -> M Atom
 evalLiteral = \case
-  LitLabel name spec  => pure $ PtrAtom (LabelPtr name spec) 0 -- TODO: getFFILabelPtrAtom name spec
-  {-
-  LitString str       -> getCStringConstantPtrAtom str
-  -}
+  LitLabel name spec  => getFFILabelPtrAtom name spec
+  LitString str       => getCStringConstantPtrAtom str
   LitFloat n d  => pure . FloatAtom $ cast n / cast d
   LitDouble n d => pure . DoubleAtom $ cast n / cast d
   LitNullAddr   => pure $ PtrAtom RawPtr 0
@@ -59,7 +65,7 @@ evalLiteral = \case
   LitNumber LitNumWord64 n  => pure . WordAtom $ cast n
   c@(LitChar{})             => pure $ Literal c
   LitRubbish{} => pure Rubbish
-  l => assert_total $ idris_crash $ "unsupported: " ++ show l
+  --l => assert_total $ idris_crash $ "unsupported: " ++ show l
 
 evalArg : Env -> Arg -> M Atom
 evalArg localEnv = \case
@@ -87,8 +93,7 @@ declareTopBindings mods = do
   -- bind string lits
   stringEnv <- for strings $ \case
     StgTopStringLit b str => do
-      --TODO: strPtr <- getCStringConstantPtrAtom str
-      let strPtr = PtrAtom (CStringPtr str) 0
+      strPtr <- getCStringConstantPtrAtom str
       pure (MkId b, (SO_TopLevel, strPtr))
     _ => ?impossible1
   -- bind closures
@@ -415,21 +420,16 @@ evalStackContinuation result = \case
 
         evalExpr extendedEnv altRHS
 
-      _ => ?todo67
-{-
-      PolyAlt -> do
-        let [Alt{..}]   = getCutShowItem alts
-            [v]         = result
+      PolyAlt => do
+        let [MkAlt altCon altBinders altRHS] = alts
+              | _ => stg_error $ "expected single alt, got: " ++ show alts
+            [v] = result
+              | _ => stg_error $ "expected a single value: " ++ show result
             extendedEnv = addBinderToEnv SO_Scrut resultBinder v $                 -- HINT: bind the result
                           localEnv
                           --addManyBindersToEnv SO_AltArg altBinders result localEnv  -- HINT: bind alt params
-        { -
-        unless (length altBinders == length result) $ do
-          stgErrorM $ "evalStackContinuation - PolyAlt - length mismatch: " ++ show (altBinders, result)
-        - }
-        setProgramPoint . PP_StgPoint $ SP_AltExpr (binderToStgId resultBinder) 0
         evalExpr extendedEnv altRHS
--}
+
   s@(RestoreExMask oldMask blockAsyncEx isInterruptible) => do
     tid <- gets ssCurrentThreadId
     ts <- getCurrentThreadState
@@ -478,10 +478,10 @@ evalStackContinuation result = \case
     ctid <- gets ssCurrentThreadId
     mylog $ "ctid: " ++ show ctid ++ " " ++ show (RaiseOp ex)
     PrimExceptions.raiseEx ex
-
-  KeepAlive{} -> do
+  -}
+  KeepAlive{} => do
     pure result
-
+  {-
   DebugFrame df -> evalDebugFrame result df
   -}
   x => stg_error $ "unsupported continuation: " ++ show x ++ ", result: " ++ show result
@@ -578,7 +578,9 @@ evalExpr localEnv = \case
 
   StgOpApp (StgPrimOp op) l t tc => do
     args <- traverse (evalArg localEnv) l
-    evalPrimOp op args t tc
+    result <- evalPrimOp op args t tc
+    putStrLn $ "\{show op} \{show args} = \{show result}"
+    pure result
 
   StgOpApp (StgFCallOp foreignCall@(MkForeignCall foreignCTarget foreignCConv foreignCSafety)) l t tc => do
     args <- case foreignCTarget of
@@ -621,9 +623,9 @@ evalPrimOp =
   {-
   PrimSmallArray.evalPrimOp $
   PrimArrayArray.evalPrimOp $
-  PrimByteArray.evalPrimOp $
-  PrimChar.evalPrimOp $
   -}
+  PrimOp.ByteArray.evalPrimOp $
+  PrimOp.Char.evalPrimOp $
   PrimOp.Concurrency.evalPrimOp $
   {-
   PrimDelayWait.evalPrimOp $
@@ -633,13 +635,13 @@ evalPrimOp =
   {-
   PrimFloat.evalPrimOp $
   PrimDouble.evalPrimOp $
-  PrimInt64.evalPrimOp $
   -}
+  PrimOp.Int64.evalPrimOp $
   PrimOp.Int32.evalPrimOp $
   {-
   PrimInt16.evalPrimOp $
-  PrimInt8.evalPrimOp $
   -}
+  PrimOp.Int8.evalPrimOp $
   PrimOp.Int.evalPrimOp $
   PrimOp.MutVar.evalPrimOp $
   PrimOp.MVar.evalPrimOp $
@@ -652,16 +654,20 @@ evalPrimOp =
   PrimSTM.evalPrimOp $
   -}
   PrimOp.WeakPointer.evalPrimOp $
+  PrimOp.Word64.evalPrimOp $
   {-
-  PrimWord64.evalPrimOp $
   PrimWord32.evalPrimOp $
   PrimWord16.evalPrimOp $
-  PrimWord8.evalPrimOp $
-  PrimWord.evalPrimOp $
+  -}
+  PrimOp.Word8.evalPrimOp $
+  PrimOp.Word.evalPrimOp $
+  {-
   PrimTagToEnum.evalPrimOp $
   PrimUnsafe.evalPrimOp $
   PrimMiscEtc.evalPrimOp $
-  PrimObjectLifetime.evalPrimOp $
+  -}
+  PrimOp.ObjectLifetime.evalPrimOp $
+  {-
   PrimInfoTableOrigin.evalPrimOp $
   -}
   unsupported where

@@ -23,9 +23,19 @@ export
 evalPrimOp : PrimOpEval -> StgName -> List Atom -> StgType -> Maybe TyCon -> M (List Atom)
 evalPrimOp fallback op args t tc = case (op, args) of
 
+  -- mkWeak# :: o -> b -> (State# RealWorld -> (# State# RealWorld, c #)) -> State# RealWorld -> (# State# RealWorld, Weak# b #)
+  ( "mkWeak#", [key, value, finalizer, st]) => do
+    wpId <- newWeakPointer key value (Just finalizer)
+    pure [WeakPointer wpId]
+
   -- mkWeakNoFinalizer# :: o -> b -> State# RealWorld -> (# State# RealWorld, Weak# b #)
   ( "mkWeakNoFinalizer#", [key, value, w]) => do
     wpId <- newWeakPointer key value Nothing
     pure [WeakPointer wpId]
+
+  -- touch# :: o -> State# RealWorld -> State# RealWorld
+  ( "touch#", [o, st]) => do
+    -- see more about 'touch#': https://gitlab.haskell.org/ghc/ghc/-/wikis/hidden-dangers-of-touch
+    pure []
 
   _ => fallback op args t tc

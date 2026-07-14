@@ -63,10 +63,19 @@ loadProgram fp = do
 
   traverse loadModule paths
 
+%foreign "scheme,chez:load-shared-object"
+prim__load_shared_object : String -> PrimIO ()
+
+loadSharedObject : HasIO io => String -> io ()
+loadSharedObject path = primIO (prim__load_shared_object path)
+
 main : IO ()
 main = do
   _ :: fp :: _ <- getArgs
     | _ => putStrLn "usage: idr-stgapp FILE"
+
+  putStrLn "loading cbits.so"
+  loadSharedObject "./.ext-stg-work/hello/cbits.so"
 
   putStrLn "parsing: \{fp}"
   mods <- loadProgram fp
