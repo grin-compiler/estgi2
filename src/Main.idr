@@ -14,6 +14,7 @@ import Control.Monad.State
 
 import Base
 import Interpreter
+import Rts
 
 export
 decodeSModule : String -> Either String SModule
@@ -72,10 +73,10 @@ loadSharedObject path = primIO (prim__load_shared_object path)
 main : IO ()
 main = do
   _ :: fp :: _ <- getArgs
-    | _ => putStrLn "usage: idr-stgapp FILE"
+    | _ => putStrLn "usage: estgi2 FILE"
 
   putStrLn "loading cbits.so"
-  loadSharedObject "./.ext-stg-work/hello/cbits.so"
+  loadSharedObject "./.ext-stg-work/hello/cbits.so" -- TODO: proper handling
 
   putStrLn "parsing: \{fp}"
   mods <- loadProgram fp
@@ -94,16 +95,20 @@ main = do
         --when switchCWD $ liftIO $ setCurrentDirectory stgappDir
         declareTopBindings mods
         --buildCWrapperHsTypeMap mods
-        --initRtsSupport progName progArgs mods
+        let progName = "TODO"
+            progArgs = ["TODO"]
+        initRtsSupport progName progArgs mods
         limit <- gets ssNextHeapAddr
         modify {ssDynamicHeapStart := limit}
 
         -- TODO: check how it is done in the native RTS: call hs_main
         mainAtom <- lookupEnv empty rootMain
 
-        evalOnMainThread $ do
+        _ <- evalOnMainThread $ do
           stackPush $ Apply [Void]
           pure [mainAtom]
+
+        flushStdHandles
 
   s <- execStateT emptyStgState run
   pure ()

@@ -44,3 +44,6 @@ TODO:
   done - implement ffi calling
   done - implement top level string literal handling
   done - implement eval lit label ; evalLiteral
+  done - implement thread scheduler
+  done - implement post main flush buffers
+  done - implement rts wired-in binding registration

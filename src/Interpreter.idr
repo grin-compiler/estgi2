@@ -11,6 +11,7 @@ import Stg.JSON
 
 import Base
 import FFI
+import ThreadScheduler
 
 import PrimOp.StablePointer
 import PrimOp.Exceptions
@@ -30,21 +31,6 @@ import PrimOp.Word64
 import PrimOp.MutVar
 import PrimOp.ByteArray
 import PrimOp.ObjectLifetime
-
-export
-gettops : Module -> List TopBinding
-gettops (MkModule
-  modulePhase
-  moduleUnitId
-  moduleName
-  moduleSourceFilePath
-  moduleForeignStubs
-  moduleHasForeignExported
-  moduleDependency
-  moduleExternalTopIds
-  moduleTyCons
-  moduleTopBindings
-  ) = moduleTopBindings
 
 evalLiteral : Lit -> M Atom
 evalLiteral = \case
@@ -116,18 +102,13 @@ declareTopBindings mods = do
 
 export
 killAllThreads : M ()
-{-
 killAllThreads = do
-  mylog "[estgi] - killAllThreads"
   -- TODO: check if there are running threads
-  tsList <- gets $ IntMap.toList . ssThreads
+  tsList <- gets $ kvList . ssThreads
   let runnableThreads = [tid | (tid, ts) <- tsList, tsStatus ts == ThreadRunning]
-  isQuiet <- gets ssIsQuiet
-  unless isQuiet $ when (runnableThreads /= []) $ do
-    reportThreads
-    error "killing all running threads"
+  when (runnableThreads /= []) $ do
+    stg_error "TODO: killing all running threads"
   pure () -- TODO
--}
 
 export
 evalStackContinuation : List Atom -> StackContinuation -> M $ List Atom
@@ -462,11 +443,10 @@ evalStackContinuation result = \case
   CatchSTM{} -> PrimSTM.mergeNestedOrRestart result -- Q: check how this is implemented in the native RTS
 
   CatchRetry{} -> PrimSTM.mergeNestedOrRestart result
-
-  RunScheduler sr -> do
-    --liftIO $ print (RunScheduler sr)
-    Scheduler.runScheduler result sr
-
+  -}
+  RunScheduler sr => do
+    ThreadScheduler.runScheduler result sr
+  {-
   -- HINT: dataToTag# has an eval call in the middle, that's why we need this continuation, it is the post-returning part of the op implementation
   DataToTagOp -> PrimTagToEnum.dataToTagOp result
 
@@ -673,3 +653,14 @@ evalPrimOp =
   unsupported where
     unsupported : StgName -> List Atom -> StgType -> Maybe TyCon -> M (List Atom)
     unsupported op args t tc = stgErrorM $ "unsupported StgPrimOp: " ++ show op ++ " args: " ++ show args
+
+export
+flushStdHandles : M ()
+flushStdHandles = do
+  putStrLn "\n\n\n\nFLUSH-STD-HANDLES\n\n\n\n\n"
+  rts <- gets ssRtsSupport
+  _ <- evalOnMainThread $ do
+    stackPush $ Apply [] -- HINT: force IO monad result to WHNF
+    stackPush $ Apply [Void]
+    pure [rts.rtsTopHandlerFlushStdHandles]
+  pure ()

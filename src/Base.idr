@@ -327,8 +327,9 @@ record Rts where
   , rtsUnpackCString              :: Atom
   , rtsTopHandlerRunIO            :: Atom
   , rtsTopHandlerRunNonIO         :: Atom
-  , rtsTopHandlerFlushStdHandles  :: Atom
-
+  -}
+  rtsTopHandlerFlushStdHandles  : Atom
+  {-
   -- closures used by the exception primitives
   , rtsDivZeroException   :: Atom
   , rtsUnderflowException :: Atom
@@ -362,7 +363,8 @@ record Rts where
 
 emptyRts : Rts
 emptyRts = MkRts
-  { rtsGlobalStore  = empty
+  { rtsTopHandlerFlushStdHandles = Rubbish
+  , rtsGlobalStore  = empty
   }
 
 public export
@@ -789,3 +791,19 @@ lookupByteArrayDescriptor m = do
   lookup m <$> gets ssMutableByteArrays >>= \case
     Nothing => stgErrorM $ "unknown ByteArrayDescriptor: " ++ show m
     Just a  => pure a
+
+export
+gettops : Module -> List TopBinding
+gettops (MkModule
+  modulePhase
+  moduleUnitId
+  moduleName
+  moduleSourceFilePath
+  moduleForeignStubs
+  moduleHasForeignExported
+  moduleDependency
+  moduleExternalTopIds
+  moduleTyCons
+  moduleTopBindings
+  ) = moduleTopBindings
+
