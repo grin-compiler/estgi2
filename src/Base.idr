@@ -5,7 +5,6 @@ import Derive.Prelude
 import public Data.Primitives.Interpolation
 import System
 import System.Clock
-import Data.Buffer
 import Data.SortedSet
 import Data.SortedMap
 import Stg.Syntax
@@ -13,6 +12,7 @@ import Stg.JSON
 import Control.Monad.State
 import Data.List
 import Data.Array
+import Data.Buffer
 
 %hide Language.Reflection.TTImp.AltType
 
@@ -270,10 +270,11 @@ record WeakPtrDescriptor where
 public export
 record ByteArrayDescriptor where
   constructor MkByteArrayDescriptor
-  baaMutableByteArray : Buffer
-  baaByteArray        : (Maybe Buffer)  -- HINT: ByteArray can only be created via unsafeFreeze from a MutableByteArray
+  baaMutableByteArray : Int -- raw ptr to the buffer
+  baaByteArray        : (Maybe Int)  -- HINT: ByteArray can only be created via unsafeFreeze from a MutableByteArray
   baaPinned           : Bool
   baaAlignment        : Int
+  baaSize             : Int
 
 Show ByteArrayDescriptor where show _ = "ByteArrayDescriptor (TODO)"
 Eq ByteArrayDescriptor where _ == _ = True -- TODO
@@ -527,7 +528,7 @@ store a o = modify {ssHeap $= insert a o}
 -- NOTE: the string gets extended with a null terminator
 
 %foreign "scheme:string->foreign-buffer"
-prim_allocString : String -> PrimIO Int
+prim_allocString : String -> Int -> PrimIO Int
 
 export
 getCStringConstantPtrAtom : String -> M Atom
@@ -537,8 +538,10 @@ getCStringConstantPtrAtom key = do
     Just a  => pure a
     Nothing => do
       let bsCString = key ++ "\0"-- zero ending is added in scheme
-      v <- lift $ primIO $ prim_allocString bsCString
+          len = stringByteLength bsCString
+      v <- primIO $ prim_allocString bsCString (cast len)
       let a = PtrAtom (CStringPtr bsCString) v
+      --putStrLn $ "alloc top string: " ++ show v --a
       modify {ssCStringConstants $= insert key a}
       pure a
 

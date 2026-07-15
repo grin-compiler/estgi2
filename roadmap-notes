@@ -47,3 +47,4 @@ TODO:
   done - implement thread scheduler
   done - implement post main flush buffers
   done - implement rts wired-in binding registration
+  - fix offset calcualtion in mem read/write operations ; see pokeElemOff and writeWideCharOffAddr#

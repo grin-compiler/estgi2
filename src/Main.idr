@@ -16,6 +16,8 @@ import Base
 import Interpreter
 import Rts
 
+import Data.String
+
 export
 decodeSModule : String -> Either String SModule
 --decodeSModule : String -> Either String Syntax.Unique -- ok

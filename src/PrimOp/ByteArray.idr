@@ -1,25 +1,22 @@
 module PrimOp.ByteArray
 
 import Data.SortedMap
-import Data.Buffer
 import Control.Monad.State
 
 import Stg.Syntax
 import Stg.JSON
 import Base
 
-%foreign "scheme:lock-object"
-prim__lockBuffer : Buffer -> PrimIO ()
+%foreign "scheme:foreign-alloc"
+prim__foreignAlloc : Int -> PrimIO Int
 
 newByteArray : Int -> Int -> Bool -> M ByteArrayIdx
 newByteArray size alignment pinned = do
   -- HINT: the implementation always uses pinned byte array because the primop implementation is not atomic
   --        GC may occur and the content data pointer must stay in place
   --        but this is only an interpreter implementation constraint
-  Just ba <- lift $ newBuffer size
-    | _ => stg_error "newBuffer - alloc"
-  primIO $ prim__lockBuffer ba
-  -- hint: idris buffer is initialized with zeros
+  ba <- primIO $ prim__foreignAlloc size
+  -- TODO: clear with zeros?
 
   next <- gets ssNextMutableByteArray
   let desc = MkByteArrayDescriptor
@@ -27,6 +24,7 @@ newByteArray size alignment pinned = do
         , baaByteArray        = Nothing
         , baaPinned           = pinned
         , baaAlignment        = alignment
+        , baaSize             = size
         }
 
   modify {ssMutableByteArrays $= insert next desc, ssNextMutableByteArray := 1 + next}
@@ -37,13 +35,10 @@ newByteArray size alignment pinned = do
     , baAlignment = alignment
     }
 
-%foreign "scheme:bytevector-contents"
-prim__bytevectorContents : Buffer -> (offset : Int) -> PrimIO Int
-
 getByteArrayContentPtr : Int -> M Int
 getByteArrayContentPtr i = do
   d <- lookupByteArrayDescriptor i
-  primIO $ prim__bytevectorContents d.baaMutableByteArray 0
+  pure d.baaMutableByteArray
 
 export
 evalPrimOp : PrimOpEval -> StgName -> List Atom -> StgType -> Maybe TyCon -> M (List Atom)

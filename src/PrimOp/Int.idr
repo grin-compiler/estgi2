@@ -35,6 +35,9 @@ evalPrimOp fallback op args t tc = case (op, args) of
   -- <# :: Int# -> Int# -> Int#
   ( "<#",  [IntAtom a, IntAtom b]) => pure [IntAtom $ if a < b  then 1 else 0]
 
+  -- ># :: Int# -> Int# -> Int#
+  ( ">#",  [IntAtom a, IntAtom b]) => pure [IntAtom $ if a > b  then 1 else 0]
+
   -- negateInt# :: Int# -> Int#
   ( "negateInt#",      [IntAtom a]) => pure [IntAtom (-a)]
 
@@ -50,5 +53,8 @@ evalPrimOp fallback op args t tc = case (op, args) of
 
   -- ==# :: Int# -> Int# -> Int#
   ( "==#", [IntAtom a, IntAtom b]) => pure [IntAtom $ if a == b then 1 else 0]
+
+  -- int2Word# :: Int# -> Word#
+  ( "int2Word#",           [IntAtom a]) => pure [WordAtom $ cast a] -- HINT: noop ; same bit level representation
 
   _ => fallback op args t tc
