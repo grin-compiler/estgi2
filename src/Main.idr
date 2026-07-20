@@ -15,6 +15,7 @@ import Control.Monad.State
 import Base
 import Interpreter
 import Rts
+import FFI.Callback
 
 import Data.String
 
@@ -78,25 +79,33 @@ main = do
     | _ => putStrLn "usage: estgi2 FILE"
 
   putStrLn "loading cbits.so"
-  loadSharedObject "./.ext-stg-work/hello/cbits.so" -- TODO: proper handling
+  --loadSharedObject "./.ext-stg-work/hello/cbits.so" -- TODO: proper handling
+  loadSharedObject "./.ext-stg-work/minigame/cbits.so" -- TODO: proper handling
 
   putStrLn "parsing: \{fp}"
   mods <- loadProgram fp
 
-  let tops = concatMap topBindings $ concatMap gettops mods
+  --putStrLn "tops"
+  --let tops = concatMap topBindings $ concatMap gettops mods
 
-  rootMain <- case [i | i <- tops, i.binderUniqueName == "main_:Main.main"] of
-              [mainId]  => pure mainId
-              []        => die "main_:Main.main not found"
-              _         => die "multiple main_:Main.main have found"
+  putStrLn "lookup main"
+  rootMain <- case [ i
+                   | m@(MkModule _ _ (MkModuleName mn) _ _ _ _ _ _ tb) <- mods
+                   , mn == "Main"
+                   , i <- concatMap topBindings tb
+                   , i.binderUniqueName == "main_:Main.main"] of
+                [mainId]  => pure mainId
+                []        => die "main_:Main.main not found"
+                _         => die "multiple main_:Main.main have found"
 
   putStrLn $ show rootMain
   putStrLn "SUCCESS"
 
   let run = do
         --when switchCWD $ liftIO $ setCurrentDirectory stgappDir
+        putStrLn "declareTopBindings"
         declareTopBindings mods
-        --buildCWrapperHsTypeMap mods
+        buildCWrapperHsTypeMap mods
         let progName = "TODO"
             progArgs = ["TODO"]
         initRtsSupport progName progArgs mods
@@ -105,6 +114,7 @@ main = do
 
         -- TODO: check how it is done in the native RTS: call hs_main
         mainAtom <- lookupEnv empty rootMain
+        putStrLn "run main"
 
         _ <- evalOnMainThread $ do
           stackPush $ Apply [Void]

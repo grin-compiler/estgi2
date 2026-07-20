@@ -47,4 +47,11 @@ TODO:
   done - implement thread scheduler
   done - implement post main flush buffers
   done - implement rts wired-in binding registration
-  - fix offset calcualtion in mem read/write operations ; see pokeElemOff and writeWideCharOffAddr#
+  done - fix offset calcualtion in mem read/write operations ; see pokeElemOff and writeWideCharOffAddr#
+  done - recognise and fixup the packages coming with ghc, i.e. bytestring, their hash is not 'inplace'
+  done - implement buildCWrapperHsTypeMap
+  done - implement wired-in con infrastructure
+  done - implement ffi value boxing infrastructure
+  done - implement ffi getter/setter
+  - implement callback bridge
+  - implement create adjustor

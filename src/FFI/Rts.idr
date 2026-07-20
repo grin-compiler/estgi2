@@ -2,10 +2,20 @@ module FFI.Rts
 
 import Control.Monad.State
 import Data.SortedSet
+import Data.Buffer
 
 import Stg.Syntax
 import Stg.JSON
 import Base
+
+%foreign "scheme:eval-str2"
+prim_eval : {a : Type} -> String -> PrimIO a
+
+%foreign "scheme:foreign-alloc"
+prim__foreignAlloc : Int -> PrimIO Int
+
+%foreign "scheme:string->foreign-buffer"
+prim_allocString : String -> Int -> PrimIO Int
 
 export
 evalFCallOp : EvalOnNewThread -> ForeignCall -> List Atom -> StgType -> Maybe TyCon -> M (List Atom)
@@ -134,16 +144,27 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
         | [IntAtom argc, PtrAtom _ argvPtr, Void] <- args
         -> do
           liftIO $ do
-            -- peekCString :: CString -> IO String 
+            -- peekCString :: CString -> IO String
             argv <- peekArray argc (castPtr argvPtr) >>= mapM peekCString
             print (argc, argv)
           -- TODO: save to the env!!
           pure []
+      -}
+      StaticTarget _ "getProgArgv" _ _ => do
+          let [PtrAtom (ByteArrayPtr ba1) ptrArgc, PtrAtom (ByteArrayPtr ba2) ptrArgv, Void] = args
+                | _ => stg_error $ "getProgArgv - unsupported args: " ++ show args
+          rts <- gets ssRtsSupport
+          primIO $ prim_eval "(foreign-set! 'integer-64 \{ptrArgc} \{0} \{1})"
 
-      StaticTarget _ "getProgArgv" _ _
-        | [PtrAtom (ByteArrayPtr ba1) ptrArgc, PtrAtom (ByteArrayPtr ba2) ptrArgv, Void] <- args
-        -> do
-          Rts{..} <- gets ssRtsSupport
+          let arg1 = "prog-name\0"-- zero ending is added in scheme
+          v <- primIO $ prim_allocString arg1 (cast $ stringByteLength arg1)
+
+          arr <- primIO $ prim__foreignAlloc 16
+          primIO $ prim_eval "(foreign-set! 'integer-64 \{arr} \{0} \{v})"
+          primIO $ prim_eval "(foreign-set! 'integer-64 \{arr} \{8} \{0})"
+          primIO $ prim_eval "(foreign-set! 'integer-64 \{ptrArgv} \{0} \{arr})"
+
+          {-
           liftIO $ do
             -- HINT: getProgArgv :: Ptr CInt -> Ptr (Ptr CString) -> IO ()
             poke (castPtr ptrArgc :: Ptr CInt) (fromIntegral $ 1 + length rtsProgArgs)
@@ -154,8 +175,9 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
             arr2 <- newArray (arr1 : args ++ [nullPtr]) :: IO (Ptr CString)
 
             poke (castPtr ptrArgv :: Ptr (Ptr CString)) arr2--(castPtr arr2 :: Ptr CString )
+          -}
           pure []
-
+      {-
       StaticTarget _ "shutdownHaskellAndExit" _ _
         | [IntV retCode, IntV fastExit, Void] <- args
         , UnboxedTuple [] <- t

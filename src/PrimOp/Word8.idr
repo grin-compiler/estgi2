@@ -22,4 +22,7 @@ evalPrimOp fallback op args t tc = do
   -- wordToWord8# :: Word# -> Word8#
   ( "wordToWord8#",  [WordAtom a])           => pure [WordAtom . w . w8 $ a]
 
+  -- gtWord8# :: Word8# -> Word8# -> Int#
+  ( "gtWord8#",      [WordAtom a, WordAtom b]) => pure [IntAtom $ if a > b  then 1 else 0]
+
   _ => fallback op args t tc

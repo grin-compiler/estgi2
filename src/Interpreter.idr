@@ -27,6 +27,7 @@ import PrimOp.Int32
 import PrimOp.Int64
 import PrimOp.Word
 import PrimOp.Word8
+import PrimOp.Word32
 import PrimOp.Word64
 import PrimOp.MutVar
 import PrimOp.ByteArray
@@ -635,8 +636,8 @@ evalPrimOp =
   -}
   PrimOp.WeakPointer.evalPrimOp $
   PrimOp.Word64.evalPrimOp $
+  PrimOp.Word32.evalPrimOp $
   {-
-  PrimWord32.evalPrimOp $
   PrimWord16.evalPrimOp $
   -}
   PrimOp.Word8.evalPrimOp $
@@ -657,10 +658,9 @@ evalPrimOp =
 export
 flushStdHandles : M ()
 flushStdHandles = do
-  putStrLn "\n\n\n\nFLUSH-STD-HANDLES\n\n\n\n\n"
-  rts <- gets ssRtsSupport
+  w <- getWiredIns
   _ <- evalOnMainThread $ do
     stackPush $ Apply [] -- HINT: force IO monad result to WHNF
     stackPush $ Apply [Void]
-    pure [rts.rtsTopHandlerFlushStdHandles]
+    pure [w.rtsTopHandlerFlushStdHandles]
   pure ()

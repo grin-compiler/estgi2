@@ -299,31 +299,30 @@ Vector = Data.Array.Indexed.Array
 Heap = SortedMap Int HeapObject
 Stack = List StackContinuation
 
-
 public export
-record Rts where
-  constructor MkRts
-  {-
+record WiredIns where
+  constructor MkWiredIns
   -- data constructors needed for FFI argument boxing from the base library
-  { rtsCharCon      :: DataCon
-  , rtsIntCon       :: DataCon
-  , rtsInt8Con      :: DataCon
-  , rtsInt16Con     :: DataCon
-  , rtsInt32Con     :: DataCon
-  , rtsInt64Con     :: DataCon
-  , rtsWordCon      :: DataCon
-  , rtsWord8Con     :: DataCon
-  , rtsWord16Con    :: DataCon
-  , rtsWord32Con    :: DataCon
-  , rtsWord64Con    :: DataCon
-  , rtsPtrCon       :: DataCon
-  , rtsFunPtrCon    :: DataCon
-  , rtsFloatCon     :: DataCon
-  , rtsDoubleCon    :: DataCon
-  , rtsStablePtrCon :: DataCon
-  , rtsTrueCon      :: DataCon
-  , rtsFalseCon     :: DataCon
+  rtsCharCon      : DataCon
+  rtsIntCon       : DataCon
+  rtsInt8Con      : DataCon
+  rtsInt16Con     : DataCon
+  rtsInt32Con     : DataCon
+  rtsInt64Con     : DataCon
+  rtsWordCon      : DataCon
+  rtsWord8Con     : DataCon
+  rtsWord16Con    : DataCon
+  rtsWord32Con    : DataCon
+  rtsWord64Con    : DataCon
+  rtsPtrCon       : DataCon
+  rtsFunPtrCon    : DataCon
+  rtsFloatCon     : DataCon
+  rtsDoubleCon    : DataCon
+  rtsStablePtrCon : DataCon
+  rtsTrueCon      : DataCon
+  rtsFalseCon     : DataCon
 
+  {-
   -- closures used by FFI wrapper code ; heap address of the closure
   , rtsUnpackCString              :: Atom
   , rtsTopHandlerRunIO            :: Atom
@@ -348,6 +347,11 @@ record Rts where
   , rtsApplyFun1Arg :: Atom
   , rtsTuple2Proj0  :: Atom
   -}
+%runElab derive "WiredIns" [Show]
+
+public export
+record Rts where
+  constructor MkRts
   -- builtin special store, see FFI (i.e. getOrSetGHCConcSignalSignalHandlerStore)
   rtsGlobalStore  : SortedMap StgName Atom
   {-
@@ -364,8 +368,7 @@ record Rts where
 
 emptyRts : Rts
 emptyRts = MkRts
-  { rtsTopHandlerFlushStdHandles = Rubbish
-  , rtsGlobalStore  = empty
+  { rtsGlobalStore  = empty
   }
 
 public export
@@ -436,12 +439,14 @@ record StgState where
   -- FFI related
   , ssCBitsMap            :: DL
   , ssStateStore          :: PrintableMVar StgState
+-}
 
   -- FFI + createAdjustor
-  , ssCWrapperHsTypeMap   :: !(Map Name (Bool, Name, [Name]))
--}
+  ssCWrapperHsTypeMap     : SortedMap StgName (Bool, StgName, List StgName)
+
   -- RTS related
   ssRtsSupport            : Rts
+  ssWiredIns              : Maybe WiredIns
 {-
   -- debug
   , ssIsQuiet             :: Bool
@@ -665,7 +670,9 @@ emptyStgState = MkStgState
   , ssNextSmallMutableArray = 0
   , ssNextArrayArray        = 0
   , ssNextMutableArrayArray = 0
+  , ssCWrapperHsTypeMap     = empty
   , ssRtsSupport            = emptyRts
+  , ssWiredIns              = Nothing
   }
 
 export
@@ -810,3 +817,16 @@ gettops (MkModule
   moduleTopBindings
   ) = moduleTopBindings
 
+export
+getWiredIns : M WiredIns
+getWiredIns = do
+  Just a <- gets ssWiredIns
+    | Nothing => stgErrorM "empty wired-ins"
+  pure a
+
+export
+lookupStablePointer : Int -> M Atom
+lookupStablePointer spId = do
+  lookup spId <$> gets ssStablePointers >>= \case
+    Nothing => stgErrorM $ "unknown StablePointer: " ++ show spId
+    Just a  => pure a

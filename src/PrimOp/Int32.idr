@@ -22,4 +22,10 @@ evalPrimOp fallback op args t tc = do
   -- intToInt32# :: Int# -> Int32#
   ( "intToInt32#",    [IntAtom a])           => pure [IntAtom . i $ i32 a]
 
+  -- plusInt32# :: Int32# -> Int32# -> Int32#
+  ( "plusInt32#",     [IntAtom a, IntAtom b]) => pure [IntAtom . i $ i32 a + i32 b]
+
+  -- int32ToWord32# :: Int32# -> Word32#
+  ( "int32ToWord32#", [IntAtom a])           => pure [WordAtom $ cast a]
+
   _ => fallback op args t tc

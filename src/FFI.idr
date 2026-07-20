@@ -13,6 +13,7 @@ import Base
 
 import Rts
 import FFI.Rts
+import FFI.Callback
 
 import GHC.Symbols
 
@@ -142,7 +143,7 @@ prim_callFFI : {a : Type} -> String -> ArgList -> PrimIO a
 -}
 callFFI : {a : Type} -> String -> String -> List String -> ArgList -> IO a
 callFFI funPtr retTy cArgTys cArgs = do
-  primIO (prim_callFFI "(foreign-procedure #f \{show funPtr} (\{unwords cArgTys}) \{retTy})" cArgs)
+  primIO (prim_callFFI "(foreign-procedure #f \{funPtr} (\{unwords cArgTys}) \{retTy})" cArgs)
 
 evalForeignCall : String -> List String -> ArgList -> StgType -> IO (List Atom)
 evalForeignCall funPtr cArgTys cArgs retType = case retType of
@@ -213,24 +214,24 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
       ----------------
       -- GHC RTS FFI
       ----------------
-      {-
+
       -- support for exporting haskell function (GHC RTS specific)
-      StaticTarget _ "createAdjustor" _ _
-        | [ IntV 1
-          , PtrAtom StablePtr{} sp
-          , Literal (LitLabel wrapperName _)
-          , PtrAtom CStringPtr{} _
-          , Void
-          ] <- args
-        , UnboxedTuple [AddrRep] <- t
-        -> do
+      StaticTarget _ "createAdjustor" _ _ => do
+          let error = stgErrorM $ "unsupported StgFCallOp: " ++ show fCall ++ " :: " ++ show t ++ "\n args: " ++ show args
+              [ IntAtom 1
+              , PtrAtom (StablePtr{}) sp
+              , Literal (LitLabel wrapperName _)
+              , PtrAtom (CStringPtr{}) _
+              , Void
+              ] = args | _ => error
+              UnboxedTuple [AddrRep] = t | _ => error
           --promptM $ putStrLn $ "[createAdjustor FFI]"
-          fun@HeapPtr{} <- lookupStablePointerPtr sp
+          fun@(HeapPtr{}) <- lookupStablePointer sp | x => stg_error $ "invalid stable pointer: " ++ show x
           cwrapperDesc <- lookupCWrapperHsType wrapperName
           -- FIXME: _freeWrapper needs to be called otherwise it will leak the memory!!!!
-          (funPtr, _freeWrapper) <- createAdjustor evalOnNewThread fun cwrapperDesc
-          pure [PtrAtom RawPtr $ castFunPtrToPtr funPtr]
-
+          (funPtr, freeWrapper) <- createAdjustor evalOnNewThread fun cwrapperDesc
+          pure [PtrAtom RawPtr funPtr]
+      {-
       -- GHC RTS global store getOrSet function implementation
       StaticTarget _ foreignSymbol _ _
         | Set.member foreignSymbol globalStoreSymbols
@@ -261,7 +262,7 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
         else if foreignCSafety == PlayRisky then do
           let cArgTys = catMaybes $ map mkFFIArgTy args
               cArgs   = foldl addFFIArg emptyArgs $ reverse args
-          lift $ evalForeignCall foreignSymbol cArgTys cArgs t
+          lift $ evalForeignCall (show foreignSymbol) cArgTys cArgs t
 
         else stgErrorM $ "unsupported StgFCallOp: " ++ show fCall ++ " :: " ++ show t ++ "\n args: " ++ show args
 
@@ -296,12 +297,17 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
           funPtr <- getFFISymbol foreignSymbol
           liftIOAndBorrowStgState $ do
             evalForeignCall funPtr cArgs t
-
-      DynamicTarget
-        | (PtrAtom RawPtr funPtr) : funArgs <- args
+      -}
+      DynamicTarget => do
+        let (PtrAtom RawPtr funPtr) :: funArgs = args
+              | _ => stgErrorM $ "unsupported StgFCallOp: " ++ show fCall ++ " :: " ++ show t ++ "\n args: " ++ show args
+        let cArgTys = catMaybes $ map mkFFIArgTy funArgs
+            cArgs   = foldl addFFIArg emptyArgs $ reverse funArgs
+        lift $ evalForeignCall (show funPtr) cArgTys cArgs t
+      {-
         -> do
           cArgs <- catMaybes <$> mapM mkFFIArg funArgs
           liftIOAndBorrowStgState $ do
             evalForeignCall (castPtrToFunPtr funPtr) cArgs t
       -}
-      _ => stgErrorM $ "unsupported StgFCallOp: " ++ show fCall ++ " :: " ++ show t ++ "\n args: " ++ show args
+      --_ => stgErrorM $ "unsupported StgFCallOp: " ++ show fCall ++ " :: " ++ show t ++ "\n args: " ++ show args

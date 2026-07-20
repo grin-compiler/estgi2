@@ -18,13 +18,8 @@ prim_eval : {a : Type} -> String -> PrimIO a
 export
 evalPrimOp : PrimOpEval -> StgName -> List Atom -> StgType -> Maybe TyCon -> M (List Atom)
 evalPrimOp fallback op args t tc = case (op, args) of
-{-
+
   -- eqAddr# :: Addr# -> Addr# -> Int#
-  ( "eqAddr#", [PtrAtom a_o a, PtrAtom b_o b]) => do
-    -- HACK, temporary
-    putStrLn $ "eqAddr# " ++ show args
-    pure [IntAtom $ if a_o == b_o then 1 else 0]
--}
   ( "eqAddr#", [PtrAtom _ a, PtrAtom _ b])         => pure [IntAtom $ if a == b then 1 else 0]
 
   -- plusAddr# :: Addr# -> Int# -> Addr#
@@ -39,7 +34,6 @@ evalPrimOp fallback op args t tc = case (op, args) of
   ( "indexCharOffAddr#", [PtrAtom _ p, IntAtom index]) => do
     -- 8 bit char
     v <- primIO $ prim_eval "(foreign-ref 'integer-8 \{p} \{index})"
-    putStrLn $ " *** " ++ show (op, args, v, Literal (LitChar $ chr v))
     pure [Literal (LitChar $ chr v)]
 
   -- writeInt8OffAddr# :: Addr# -> Int# -> Int8# -> State# s -> State# s
@@ -78,5 +72,25 @@ evalPrimOp fallback op args t tc = case (op, args) of
   ( "readWord64OffAddr#", [PtrAtom _ p, IntAtom index, st]) => do
     v <- primIO $ prim_eval "(foreign-ref 'unsigned-64 \{p} \{8 * index})"
     pure [WordAtom v]
+
+  -- readAddrOffAddr# :: Addr# -> Int# -> State# s -> (# State# s, Addr# #)
+  ( "readAddrOffAddr#", [PtrAtom _ p, IntAtom index, st]) => do
+    v <- primIO $ prim_eval "(foreign-ref 'unsigned-64 \{p} \{8 * index})"
+    pure [PtrAtom RawPtr v]
+
+  -- readWord8OffAddr# :: Addr# -> Int# -> State# s -> (# State# s, Word8# #)
+  ( "readWord8OffAddr#", [PtrAtom _ p, IntAtom index, st]) => do
+    v <- primIO $ prim_eval "(foreign-ref 'unsigned-8 \{p} \{index})"
+    pure [WordAtom v]
+
+  -- readInt32OffAddr# :: Addr# -> Int# -> State# s -> (# State# s, Int32# #)
+  ( "readInt32OffAddr#", [PtrAtom _ p, IntAtom index, st]) => do
+    v <- primIO $ prim_eval "(foreign-ref 'unsigned-32 \{p} \{4 * index})"
+    pure [IntAtom v]
+
+  -- writeInt32OffAddr# :: Addr# -> Int# -> Int32# -> State# s -> State# s
+  ( "writeInt32OffAddr#", [PtrAtom _ p, IntAtom index, IntAtom value, st]) => do
+    primIO $ prim_eval "(foreign-set! 'integer-32 \{p} \{4 * index} \{value})"
+    pure []
 
   _ => fallback op args t tc
