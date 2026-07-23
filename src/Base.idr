@@ -13,6 +13,7 @@ import Control.Monad.State
 import Data.List
 import Data.Array
 import Data.Buffer
+import Data.IORef
 
 %hide Language.Reflection.TTImp.AltType
 
@@ -281,6 +282,15 @@ Eq ByteArrayDescriptor where _ == _ = True -- TODO
 Ord ByteArrayDescriptor where _ `compare` _ = EQ -- TODO
 
 public export
+record Printable a where
+  constructor MkPrintable
+  value : a
+
+Show (Printable a) where show _ = "Printable (TODO)"
+Eq (Printable a) where _ == _ = True -- TODO
+Ord (Printable a) where _ `compare` _ = EQ -- TODO
+
+public export
 record MVarDescriptor where
   constructor MkMVarDescriptor
   mvdValue    : Maybe Atom
@@ -342,11 +352,10 @@ record WiredIns where
   , rtsBlockedIndefinitelyOnMVar  :: Atom -- (exception)
   , rtsBlockedIndefinitelyOnSTM   :: Atom -- (exception)
   , rtsNonTermination             :: Atom -- (exception)
-
+-}
   -- rts helper custom closures
-  , rtsApplyFun1Arg :: Atom
-  , rtsTuple2Proj0  :: Atom
-  -}
+  rtsApplyFun1Arg : Atom
+  rtsTuple2Proj0  : Atom
 %runElab derive "WiredIns" [Show]
 
 public export
@@ -370,6 +379,21 @@ emptyRts : Rts
 emptyRts = MkRts
   { rtsGlobalStore  = empty
   }
+
+public export
+data Mutex : Type where [external]
+
+export
+%foreign "scheme:make-mutex"
+prim_makeMutex : PrimIO Mutex
+
+export
+%foreign "scheme:mutex-acquire"
+prim_mutexAcquire : Mutex -> PrimIO ()
+
+export
+%foreign "scheme:mutex-release"
+prim_mutexRelease : Mutex -> PrimIO ()
 
 public export
 record StgState where
@@ -435,11 +459,10 @@ record StgState where
   ssNextSmallMutableArray : Int
   ssNextArrayArray        : Int
   ssNextMutableArrayArray : Int
-{-
+
   -- FFI related
-  , ssCBitsMap            :: DL
-  , ssStateStore          :: PrintableMVar StgState
--}
+  --, ssCBitsMap            :: DL
+  ssStateStore            : Printable (Mutex, IORef (Maybe StgState))
 
   -- FFI + createAdjustor
   ssCWrapperHsTypeMap     : SortedMap StgName (Bool, StgName, List StgName)
@@ -506,7 +529,27 @@ record StgState where
 --  deriving (Show)
 %runElab derive "StgState" [Show]
 
+export
+makeStateStore : IO (Printable (Mutex, IORef (Maybe StgState)))
+makeStateStore = do
+  mutex <- primIO prim_makeMutex
+  ref <- newIORef Nothing
+  pure $ MkPrintable (mutex, ref)
+
 M = StateT StgState IO
+
+export
+borrowState : IO a -> M a
+borrowState action = do
+  MkPrintable (mutex, stateStore) <- gets ssStateStore
+  writeIORef stateStore (Just !get)
+  primIO $ prim_mutexRelease mutex
+  result <- lift action
+  primIO $ prim_mutexAcquire mutex
+  Just s0 <- readIORef stateStore
+    | _ => ?ffi_error2
+  put s0
+  pure result
 
 export
 stackPush : StackContinuation -> M ()
@@ -624,8 +667,8 @@ isThreadLive = \case
   _               => True
 
 export
-emptyStgState : StgState
-emptyStgState = MkStgState
+emptyStgState : Printable (Mutex, IORef (Maybe StgState)) -> StgState
+emptyStgState stateStore = MkStgState
   { ssHeap                = empty
   , ssStaticGlobalEnv     = empty
   , ssDynamicHeapStart    = 0
@@ -670,6 +713,7 @@ emptyStgState = MkStgState
   , ssNextSmallMutableArray = 0
   , ssNextArrayArray        = 0
   , ssNextMutableArrayArray = 0
+  , ssStateStore            = stateStore
   , ssCWrapperHsTypeMap     = empty
   , ssRtsSupport            = emptyRts
   , ssWiredIns              = Nothing
@@ -690,6 +734,7 @@ lookupEnvSO localEnv b = do
     "ghc-prim_GHC.Prim.coercionToken#"  => pure (SO_Builtin, Void)
     "ghc-prim_GHC.Prim.proxy#"          => pure (SO_Builtin, Void)
     "ghc-prim_GHC.Prim.(##)"            => pure (SO_Builtin, Void)
+    "ghc-prim_GHC.Types.(##)"           => pure (SO_Builtin, Void)
     _ => stgErrorM $ "unknown variable: " ++ show b
 
 export
@@ -830,3 +875,9 @@ lookupStablePointer spId = do
   lookup spId <$> gets ssStablePointers >>= \case
     Nothing => stgErrorM $ "unknown StablePointer: " ++ show spId
     Just a  => pure a
+
+export
+readHeapClosure : Atom -> M HeapObject
+readHeapClosure a = readHeap a >>= \o => case o of
+    Closure{} => pure o
+    _ => stgErrorM $ "expected closure but got: "-- ++ show o

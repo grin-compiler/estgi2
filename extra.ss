@@ -14,6 +14,16 @@
   (newline)
   (apply (eval-str cmd) args))
 (define (list-cons t a l) (cons a l))
+(define (list-head t l) (car l))
+
+(define c-memcpy-ptr (foreign-procedure "memcpy" (uptr uptr size_t) uptr))
+
+(define (decode-float-to-tuple x f)
+  (let ([v (decode-float f)])
+    (display "decode-float-to-tuple x: ")
+    (display x)
+    (newline)
+    (cons (vector-ref v 0) (cons (vector-ref v 1) (vector-ref v 2)))))
 
 (define c-memcpy (foreign-procedure "memcpy" (uptr string size_t) uptr))
 (define c-puts (foreign-procedure "puts" (size_t) size_t))
@@ -34,3 +44,22 @@
     ;; (newline)
 
     addr))
+
+(define (make-cb-fun f)
+  (let ([x (foreign-callable
+           (lambda args
+              (display "callback-fun") (newline) (display "args: ") (pretty-print args)
+              (display f)
+              (newline)
+              (display "arity: ")
+              (display (procedure-arity-mask f))
+              (newline)
+              (display "call 1\n")
+              (f args)
+              (display "call 2\n")
+              ;(f 21 67)
+              )
+           ()
+           void)])
+    (lock-object x)
+    (foreign-callable-entry-point x)))

@@ -626,7 +626,10 @@ record Binder where
 record TyCon
 
 public export
-data CutTyCon = MkCutTyCon (Lazy TyCon)
+record CutTyCon where
+  constructor MkCutTyCon
+  tycon : Lazy TyCon
+
 {-
 instance Eq CutTyCon where _ == _ = True
 instance Ord CutTyCon where compare _ _ = EQ

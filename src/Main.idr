@@ -18,6 +18,7 @@ import Rts
 import FFI.Callback
 
 import Data.String
+import Data.IORef
 
 export
 decodeSModule : String -> Either String SModule
@@ -83,7 +84,8 @@ main = do
   loadSharedObject "./.ext-stg-work/minigame/cbits.so" -- TODO: proper handling
 
   putStrLn "parsing: \{fp}"
-  mods <- loadProgram fp
+  mods0 <- loadProgram fp
+  let mods = !(extStgRtsSupportModule) :: mods0
 
   --putStrLn "tops"
   --let tops = concatMap topBindings $ concatMap gettops mods
@@ -101,7 +103,8 @@ main = do
   putStrLn $ show rootMain
   putStrLn "SUCCESS"
 
-  let run = do
+  let run : M ()
+      run = do
         --when switchCWD $ liftIO $ setCurrentDirectory stgappDir
         putStrLn "declareTopBindings"
         declareTopBindings mods
@@ -122,7 +125,10 @@ main = do
 
         flushStdHandles
 
-  s <- execStateT emptyStgState run
+  ss@(MkPrintable stateStore) <- makeStateStore
+  primIO $ prim_mutexAcquire $ fst $ stateStore
+
+  s <- execStateT (emptyStgState ss) run
   pure ()
 
 

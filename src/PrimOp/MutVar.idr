@@ -28,4 +28,24 @@ evalPrimOp fallback op args t tc = case (op, args) of
     modify {ssMutVars $= insert m a}
     pure []
 
+  -- atomicModifyMutVar2# :: MutVar# s a -> (a -> c) -> State# s -> (# State# s, a, c #)
+  ( "atomicModifyMutVar2#", [MutVar m, fun, st]) => do
+    w <- getWiredIns
+    -- NOTE: CPU atomic
+    old <- lookupMutVar m
+
+    -- transform through fun, get a pair result
+    Closure hoIsLNE hoName hoCloBody hoEnv hoCloArgs hoCloMissing <- readHeapClosure w.rtsApplyFun1Arg
+      | ho => stg_error $ "atomicModifyMutVar2# - expected Closure, got: " ++ show ho
+    lazyNewTup2Value <- HeapPtr <$> allocAndStore (Closure hoIsLNE hoName hoCloBody hoEnv [fun, old] 0)
+
+    -- get the first value of the pair
+    Closure hoIsLNE hoName hoCloBody hoEnv hoCloArgs hoCloMissing <- readHeapClosure w.rtsTuple2Proj0
+      | ho => stg_error $ "atomicModifyMutVar2# - expected Closure, got: " ++ show ho
+    lazyNewMutVarValue <- HeapPtr <$> allocAndStore (Closure hoIsLNE hoName hoCloBody hoEnv [lazyNewTup2Value] 0)
+
+    -- update mutvar
+    modify {ssMutVars $= insert m lazyNewMutVarValue}
+    pure [old, lazyNewTup2Value]
+
   _ => fallback op args t tc

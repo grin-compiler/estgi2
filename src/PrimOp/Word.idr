@@ -20,4 +20,7 @@ evalPrimOp fallback op args t tc = case (op, args) of
   -- and# :: Word# -> Word# -> Word#
   ( "and#",  [WordAtom a, WordAtom b])   => pure [WordAtom $ a .&. b]
 
+  -- leWord# :: Word# -> Word# -> Int#
+  ( "leWord#",   [WordAtom a, WordAtom b])  => pure [IntAtom $ if a <= b then 1 else 0]
+
   _ => fallback op args t tc

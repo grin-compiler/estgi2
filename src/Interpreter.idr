@@ -32,6 +32,11 @@ import PrimOp.Word64
 import PrimOp.MutVar
 import PrimOp.ByteArray
 import PrimOp.ObjectLifetime
+import PrimOp.TagToEnum
+import PrimOp.Unsafe
+import PrimOp.Double
+import PrimOp.Float
+import PrimOp.MiscEtc
 
 evalLiteral : Lit -> M Atom
 evalLiteral = \case
@@ -447,10 +452,10 @@ evalStackContinuation result = \case
   -}
   RunScheduler sr => do
     ThreadScheduler.runScheduler result sr
-  {-
-  -- HINT: dataToTag# has an eval call in the middle, that's why we need this continuation, it is the post-returning part of the op implementation
-  DataToTagOp -> PrimTagToEnum.dataToTagOp result
 
+  -- HINT: dataToTag# has an eval call in the middle, that's why we need this continuation, it is the post-returning part of the op implementation
+  DataToTagOp => PrimOp.TagToEnum.dataToTagOp result
+  {-
   AtomicallyOp stmAction -> do
     promptM $ putStrLn "[ AtomicallyOp ]"
     PrimSTM.atomicallyOp stmAction
@@ -613,10 +618,8 @@ evalPrimOp =
   PrimParallelism.evalPrimOp $
   -}
   PrimOp.Exceptions.evalPrimOp $
-  {-
-  PrimFloat.evalPrimOp $
-  PrimDouble.evalPrimOp $
-  -}
+  PrimOp.Float.evalPrimOp $
+  PrimOp.Double.evalPrimOp $
   PrimOp.Int64.evalPrimOp $
   PrimOp.Int32.evalPrimOp $
   {-
@@ -642,11 +645,9 @@ evalPrimOp =
   -}
   PrimOp.Word8.evalPrimOp $
   PrimOp.Word.evalPrimOp $
-  {-
-  PrimTagToEnum.evalPrimOp $
-  PrimUnsafe.evalPrimOp $
-  PrimMiscEtc.evalPrimOp $
-  -}
+  PrimOp.TagToEnum.evalPrimOp $
+  PrimOp.Unsafe.evalPrimOp $
+  PrimOp.MiscEtc.evalPrimOp $
   PrimOp.ObjectLifetime.evalPrimOp $
   {-
   PrimInfoTableOrigin.evalPrimOp $

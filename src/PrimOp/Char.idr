@@ -16,4 +16,7 @@ evalPrimOp fallback op args t tc = case (op, args) of
   -- ord# :: Char# -> Int#
   ( "ord#",    [Literal $ LitChar c]) => pure [IntAtom $ ord c]
 
+  -- geChar# :: Char# -> Char# -> Int#
+  ( "geChar#", [Literal $ LitChar a, Literal $ LitChar b]) => pure [IntAtom $ if a >= b then 1 else 0]
+
   _ => fallback op args t tc

@@ -69,10 +69,11 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
       StaticTarget _ "stg_interp_constr7_entry" _ _ -> stgErrorM $ "not implemented: " ++ show foreignCTarget
 
       StaticTarget _ "freeHaskellFunctionPtr" _ _ -> pure [] -- TODO
-      StaticTarget _ "performMajorGC" _ _ -> do
-        modify' $ \s@StgState{..} -> s {ssRequestMajorGC = True}
+      -}
+      StaticTarget _ "performMajorGC" _ _ => do
+        --modify' $ \s@StgState{..} -> s {ssRequestMajorGC = True}
         pure []
-
+      {-
       StaticTarget _ "setNumCapabilities" _ _
         | [WordV num_caps, Void] <- args
         -> do

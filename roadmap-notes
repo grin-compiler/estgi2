@@ -53,5 +53,7 @@ TODO:
   done - implement wired-in con infrastructure
   done - implement ffi value boxing infrastructure
   done - implement ffi getter/setter
-  - implement callback bridge
-  - implement create adjustor
+  done - implement callback bridge
+  done - implement create adjustor
+  done - implement rts wired-in support module
+  - fix ffi callback fair scheduling

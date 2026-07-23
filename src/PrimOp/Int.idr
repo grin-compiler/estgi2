@@ -57,4 +57,25 @@ evalPrimOp fallback op args t tc = case (op, args) of
   -- int2Word# :: Int# -> Word#
   ( "int2Word#",           [IntAtom a]) => pure [WordAtom $ cast a] -- HINT: noop ; same bit level representation
 
+  -- int2Double# :: Int# -> Double#
+  ( "int2Double#",         [IntAtom a] ) => pure [DoubleAtom $ cast a]
+
+  -- quotRemInt# :: Int# -> Int# -> (# Int#, Int# #)
+  ( "quotRemInt#",     [IntAtom a, IntAtom b]) => pure [IntAtom $ a `div` b, IntAtom $ a `mod` b]
+
+  -- int2Float# :: Int# -> Float#
+  ( "int2Float#",          [IntAtom a] ) => pure [FloatAtom $ cast a]
+
+  -- addIntC# :: Int# -> Int# -> (# Int#, Int# #)
+  ( "addIntC#",        [IntAtom a, IntAtom b]) => do
+    let int64Max : Integer
+        int64Max = 9223372036854775807
+
+        int64Min : Integer
+        int64Min = -9223372036854775808
+
+        carry : Integer -> Int
+        carry x = if x < int64Min || x > int64Max then 1 else 0
+    pure [IntAtom $ a + b, IntAtom . carry $ cast a + cast b]
+
   _ => fallback op args t tc

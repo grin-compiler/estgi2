@@ -3,6 +3,8 @@ module FFI.Callback
 import Control.Monad.State
 import Data.SortedMap
 import Data.List
+import Data.String
+import Data.IORef
 import System
 
 import Stg.Syntax
@@ -145,84 +147,224 @@ ffiTypeToFFIRep = MkFFIRep . \case
   "MutableByteArray#"   => AddrRep
 
   x => assert_total $ idris_crash $ "ffiTypeToFFIRep - unsupported: " ++ show x
-{-
-ffiRepToCType :: FFIRep -> Ptr FFI.CType
-ffiRepToCType (FFIRep r) = case r of
-  VoidRep     -> FFI.ffi_type_void
-  LiftedRep   -> FFI.ffi_type_pointer
-  UnliftedRep -> FFI.ffi_type_pointer
-  Int8Rep     -> FFI.ffi_type_sint8
-  Int16Rep    -> FFI.ffi_type_sint16
-  Int32Rep    -> FFI.ffi_type_sint32
-  Int64Rep    -> FFI.ffi_type_sint64
-  IntRep      -> FFI.ffi_type_sint64
-  Word8Rep    -> FFI.ffi_type_uint8
-  Word16Rep   -> FFI.ffi_type_uint16
-  Word32Rep   -> FFI.ffi_type_uint32
-  Word64Rep   -> FFI.ffi_type_uint64
-  WordRep     -> FFI.ffi_type_uint64
-  AddrRep     -> FFI.ffi_type_pointer
-  FloatRep    -> FFI.ffi_type_float
-  DoubleRep   -> FFI.ffi_type_double
-  rep         -> error $ "ffiRepToCType - unsupported: " ++ show rep
--}
 
-ffiRepToGetter : FFIRep -> Int -> IO Atom
-ffiRepToGetter (MkFFIRep r) p = case r of
-  VoidRep     => pure Void
-  Int64Rep    => IntAtom <$> primIO (prim_eval "(foreign-ref 'integer-64 \{p} 0)")
-  Int32Rep    => IntAtom <$> primIO (prim_eval "(foreign-ref 'integer-32 \{p} 0)")
-  Int16Rep    => IntAtom <$> primIO (prim_eval "(foreign-ref 'integer-16 \{p} 0)")
-  Int8Rep     => IntAtom <$> primIO (prim_eval "(foreign-ref 'integer-8 \{p} 0)")
-  IntRep      => IntAtom <$> primIO (prim_eval "(foreign-ref 'integer-64 \{p} 0)")
-  Word64Rep   => WordAtom <$> primIO (prim_eval "(foreign-ref 'unsigned-64 \{p} 0)")
-  Word32Rep   => WordAtom <$> primIO (prim_eval "(foreign-ref 'unsigned-32 \{p} 0)")
-  Word16Rep   => WordAtom <$> primIO (prim_eval "(foreign-ref 'unsigned-16 \{p} 0)")
-  Word8Rep    => WordAtom <$> primIO (prim_eval "(foreign-ref 'unsigned-8 \{p} 0)")
-  WordRep     => WordAtom <$> primIO (prim_eval "(foreign-ref 'unsigned-64 \{p} 0)")
-  AddrRep     => PtrAtom RawPtr <$> primIO (prim_eval "(foreign-ref 'integer-64 \{p} 0)")
-  FloatRep    => FloatAtom  <$> primIO (prim_eval "(foreign-ref 'single-float \{p} 0)")
-  DoubleRep   => DoubleAtom <$> primIO (prim_eval "(foreign-ref 'double-float \{p} 0)")
-  rep         => die $ "ffiRepToGetter - unsupported: " ++ show rep
+ffiRepToCType : FFIRep -> String
+ffiRepToCType (MkFFIRep r) = case r of
+  VoidRep     => "void"
+  LiftedRep   => "void*"
+  UnliftedRep => "void*"
+  Int8Rep     => "integer-8"
+  Int16Rep    => "integer-16"
+  Int32Rep    => "integer-32"
+  Int64Rep    => "integer-64"
+  IntRep      => "integer-64"
+  Word8Rep    => "unsigned-8"
+  Word16Rep   => "unsigned-16"
+  Word32Rep   => "unsigned-32"
+  Word64Rep   => "unsigned-64"
+  WordRep     => "unsigned-64"
+  AddrRep     => "void*"
+  FloatRep    => "single-float"
+  DoubleRep   => "double-float"
+  rep         => assert_total $ idris_crash $ "ffiRepToCType - unsupported: " ++ show rep
 
-ffiRepToSetter : FFIRep -> Int -> Atom -> StgName -> IO ()
-ffiRepToSetter (MkFFIRep r) p a retTypeName = case (r, a) of
-  (VoidRep,   Void)          => pure ()
-  (FloatRep,  FloatAtom v)   => primIO $ prim_eval "(foreign-set! 'single-float \{p} 0 \{show v})"
-  (DoubleRep, DoubleAtom v)  => primIO $ prim_eval "(foreign-set! 'double-float \{p} 0 \{show v})"
-  (Int64Rep,  IntAtom v)     => primIO $ prim_eval "(foreign-set! 'integer-64 \{p} 0 \{v})"
-  (Int32Rep,  IntAtom v)     => primIO $ prim_eval "(foreign-set! 'integer-32 \{p} 0 \{v})"
-  (Int16Rep,  IntAtom v)     => primIO $ prim_eval "(foreign-set! 'integer-16 \{p} 0 \{v})"
-  (Int8Rep,   IntAtom v)     => primIO $ prim_eval "(foreign-set! 'integer-8 \{p} 0 \{v})"
-  (IntRep,    IntAtom v)     => primIO $ prim_eval "(foreign-set! 'integer-64 \{p} 0 \{v})"
-  (Word64Rep, WordAtom v)    => primIO $ prim_eval "(foreign-set! 'unsigned-64 \{p} 0 \{v})"
-  (Word32Rep, WordAtom v)    => primIO $ prim_eval "(foreign-set! 'unsigned-32 \{p} 0 \{v})"
-  (Word16Rep, WordAtom v)    => primIO $ prim_eval "(foreign-set! 'unsigned-16 \{p} 0 \{v})"
-  (Word8Rep,  WordAtom v)    => primIO $ prim_eval "(foreign-set! 'unsigned-8 \{p} 0 \{v})"
-  (WordRep,   WordAtom v)    => primIO $ prim_eval "(foreign-set! 'unsigned-64 \{p} 0 \{v})"
-  (AddrRep,   PtrAtom RawPtr v) => primIO $ prim_eval "(foreign-set! 'integer-64 \{p} 0 \{v})"
-  x => die $ "ffiRepToSetter - unsupported: " ++ show (x, retTypeName)
+public export
+data ArgList : Type where [external]
+
+export
+%foreign "scheme:list"
+emptyArgs : ArgList
+
+export
+%foreign "scheme:list-cons"
+addArg : {a : Type} -> a -> ArgList -> ArgList
+
+export
+%foreign "scheme:list-head"
+headArg : {a : Type} -> ArgList -> a
+
+export
+%foreign "scheme:cdr"
+tailArgs : ArgList -> ArgList
+
+ffiRepToGetter : FFIRep -> ArgList -> Atom
+ffiRepToGetter (MkFFIRep r) args = case r of
+  VoidRep     => Void
+  Int64Rep    => IntAtom $ headArg args
+  Int32Rep    => IntAtom $ headArg args
+  Int16Rep    => IntAtom $ headArg args
+  Int8Rep     => IntAtom $ headArg args
+  IntRep      => IntAtom $ headArg args
+  Word64Rep   => WordAtom $ headArg args
+  Word32Rep   => WordAtom $ headArg args
+  Word16Rep   => WordAtom $ headArg args
+  Word8Rep    => WordAtom $ headArg args
+  WordRep     => WordAtom $ headArg args
+  AddrRep     => PtrAtom RawPtr $ headArg args
+  FloatRep    => FloatAtom  $ headArg args
+  DoubleRep   => DoubleAtom $ headArg args
+  rep         => assert_total $ idris_crash $ "ffiRepToGetter - unsupported: " ++ show rep
+
+ffiRepToSetter : FFIRep -> ArgList -> Atom -> StgName -> ArgList
+ffiRepToSetter (MkFFIRep r) args a retTypeName = case (r, a) of
+  (VoidRep,   Void)          => addArg () args
+  (FloatRep,  FloatAtom v)   => addArg v args
+  (DoubleRep, DoubleAtom v)  => addArg v args
+  (Int64Rep,  IntAtom v)     => addArg v args
+  (Int32Rep,  IntAtom v)     => addArg v args
+  (Int16Rep,  IntAtom v)     => addArg v args
+  (Int8Rep,   IntAtom v)     => addArg v args
+  (IntRep,    IntAtom v)     => addArg v args
+  (Word64Rep, WordAtom v)    => addArg v args
+  (Word32Rep, WordAtom v)    => addArg v args
+  (Word16Rep, WordAtom v)    => addArg v args
+  (Word8Rep,  WordAtom v)    => addArg v args
+  (WordRep,   WordAtom v)    => addArg v args
+  (AddrRep,   PtrAtom RawPtr v) => addArg v args
+  x => assert_total $ idris_crash $ "ffiRepToSetter - unsupported: " ++ show (x, retTypeName)
+
+%foreign "scheme:make-cb-fun"
+prim_make_cb_fun : (ArgList -> ArgList) -> PrimIO Int
+-- head / tail = car / cdr
+
+ffiCallbackBridge : EvalOnNewThread -> IORef (Maybe StgState) -> Atom -> CWrapperDesc -> List Atom -> IO ArgList
 
 --IDEA: adjustor is a dep typed function where the arity varies according to the type signature
 export
 createAdjustor : EvalOnNewThread -> Atom -> (Bool, StgName, List StgName) -> M (Int, IO ())
 createAdjustor evalOnNewThread fun cwrapperDesc@(_, retTy, argTys) = do
   putStrLn $ "created adjustor: " ++ show fun ++ " " ++ show cwrapperDesc
+  let retCType  = ffiRepToCType $ ffiTypeToFFIRep retTy
+      argsFFIType = map ffiTypeToFFIRep argTys
+      argsCType = map (ffiRepToCType . ffiTypeToFFIRep) argTys
+  putStrLn "1idr"
   let str = """
-        (let ([x (foreign-callable
-                   (lambda (x y) (pretty-print (cons x (* y 2))))
-                   (string integer-32)
-                   void)])
+        (lambda (f)
+          (begin
+          (display "1a\n")
+          (lock-object f)
+          (display "2a\n")
+          (let ([x (foreign-callable
+                   (lambda args
+                      (display "callback-fun") (newline) (display "args: ") (pretty-print args)
+                      (car (f args)))
+                   (\{unwords argsCType})
+                   \{retCType})])
+          (display "3a\n")
           (lock-object x)
-          (foreign-callable-entry-point x))
+          (display "4a\n")
+          (let ([r (foreign-callable-entry-point x)])
+            (display "5a\n")
+            (display r) (newline)
+            (display x) (newline)
+            (display f) (newline)
+            r)
+          )))
         """
-      x : M Int
+      --does not work x : M ((AnyPtr -> ()) -> PrimIO Int)
+      x : M ((ArgList -> ArgList) -> Int)
       x = primIO $ prim_eval str
-  i <- x
+  putStrLn "2idr"
+
+  MkPrintable (mutex, stateStore) <- gets ssStateStore
+
+  let cb : ArgList -> IO ArgList
+      cb i = do
+        putStrLn $ "hello cb1 "
+        --putStrLn $ "hello cb2 " ++ show i
+        putStrLn $ "called adjustor: " ++ show fun ++ " " ++ show cwrapperDesc
+        --ffiRepToGetter : FFIRep -> ArgList -> Atom
+        let args : List Atom
+            args = reverse $ fst $ foldl (\(atoms, l), t => (ffiRepToGetter t l :: atoms, tailArgs l)) ([],i) argsFFIType
+        putStrLn $ "hello cb1 args: " ++ show args
+
+        primIO $ prim_mutexAcquire mutex
+        putStrLn $ "begin hello cb1 args: " ++ show args
+        result <- ffiCallbackBridge evalOnNewThread stateStore fun cwrapperDesc args
+        putStrLn $ "finished hello cb1 args: " ++ show args ++ " fun " ++ show fun
+        primIO $ prim_mutexRelease mutex
+        pure result
+
+  putStrLn "3idr"
+  {-
+  putStrLn $ "create cb"
+  x0 <- x
+  i <- primIO $ x0 cb
+  -}
+  --i <- primIO $ my_prim_make_cb_fun (\n => unsafePerformIO $ cb n)
+  xx <- x
+  putStrLn "4idr"
+  let i = xx (\n => unsafePerformIO $ cb n)
+  putStrLn "5idr"
+  --i <- primIO xxx
+  putStrLn "6idr"
   putStrLn $ "cb addr: " ++ show i
-  ?todo_adjustor
+  let (True, "Unit", _) = cwrapperDesc
+        | _ => ?todo_adjustor
+  pure (i, pure ())
   {-
   let (retCType :: argsCType) = map (ffiRepToCType . ffiTypeToFFIRep) $ retTy :: argTys
   stateStore <- gets $ unPrintableMVar . ssStateStore
   liftIO $ FFI.wrapper retCType argsCType (ffiCallbackBridge evalOnNewThread stateStore fun cwrapperDesc)
-`-}
+-}
+
+ffiCallbackBridge evalOnNewThread stateStore fun (isIOCall, retTypeName, argTypeNames) argAtoms = do
+  -- read args from ffi
+  --argAtoms <- zipWithM (ffiRepToGetter . ffiTypeToFFIRep) argTypeNames argsStorage
+  --let argAtoms : List Atom
+  --    argAtoms = []
+
+  Just before <- readIORef stateStore
+    | _ => ?errorffiCallbackBridge1
+
+  (after, unboxedResult) <- runStateT before $ do
+    funStr <- readHeap fun
+
+    oldThread <- gets ssCurrentThreadId
+
+    boxedResult <- evalOnNewThread $ do
+      -- TODO: box FFI arg atoms
+      --  i.e. rts_mkWord8
+      -- TODO: check how the stubs are generated and what types are need to be boxed
+      --liftIO $ putStrLn $ "[step 2]"
+      boxedArgs <- sequence $ zipWith boxFFIAtom argTypeNames argAtoms
+      --liftIO $ putStrLn $ "[step 3] boxedArgs: " ++ show boxedArgs
+      -- !!!!!!!!!!!!!!!!!!!!!!!!!!
+      -- Q: what stack shall we use here?
+      -- !!!!!!!!!!!!!!!!!!!!!!!!!!
+      stackPush $ RunScheduler SR_ThreadFinishedFFICallback -- return from callback
+      stackPush $ Apply [] -- force result to WHNF ; is this needed?
+      --liftIO $ putStrLn $ "[step 4]"
+      stackPush $ Apply $ boxedArgs ++ if isIOCall then [Void] else []
+      --liftIO $ putStrLn $ "[step 5]"
+      --modify' $ \s@StgState{..} -> s {ssDebugState = DbgStepByStep}
+      pure [fun]
+
+    --liftIO $ putStrLn $ "[pre - callback END]   " ++ show fun ++ " boxed-result: " ++ show boxedResult
+    --requestContextSwitch
+    switchToThread oldThread
+    sequence $ zipWith unboxFFIAtom [retTypeName] boxedResult
+{-
+--=============================================================================
+    -- force result to WHNF
+    resultLazy <- evalOnNewThread fun $ boxedArgs ++ [Void]
+    finalResult <- case resultLazy of
+      []            -> pure resultLazy
+      [valueThunk]  -> evalOnNewThread valueThunk []
+    switchToThread oldThread
+--=============================================================================
+    pure finalResult
+-}
+  --putStrLn $ "[pre - callback END]   " ++ show fun ++ " result: " ++ show unboxedResult
+  writeIORef stateStore (Just after)
+  --putStrLn $ "[callback END]   " ++ show fun ++ " result: " ++ show unboxedResult
+
+  -- HINT: need some kind of channel between the IO world and the interpreters StateT IO
+  -- NOTE: stg apply fun argAtoms
+  case unboxedResult of
+    []        => pure $ addArg () emptyArgs
+    [retAtom] => pure $ ffiRepToSetter (ffiTypeToFFIRep retTypeName) emptyArgs retAtom retTypeName
+      -- write result to ffi
+      -- NOTE: only single result is supported
+      --ffiRepToSetter (ffiTypeToFFIRep retTypeName) retStorage retAtom retTypeName
+    _ => ?ffi_cb_todo

@@ -22,4 +22,7 @@ evalPrimOp fallback op args t tc = do
   -- wordToWord32# :: Word# -> Word32#
   ( "wordToWord32#",  [WordAtom a])          => pure [WordAtom . w . w32 $ a]
 
+  -- plusWord32# :: Word32# -> Word32# -> Word32#
+  ( "plusWord32#",    [WordAtom a, WordAtom b]) => pure [WordAtom . w $ w32 a + w32 b]
+
   _ => fallback op args t tc

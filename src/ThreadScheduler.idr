@@ -24,14 +24,14 @@ runScheduler result sr = do
       ts <- getThreadState tid
       updateThreadState tid $ {tsStatus := ThreadFinished, tsCurrentResult := result} ts
       pure result
-    {-
-    SR_ThreadFinishedFFICallback -> do
+
+    SR_ThreadFinishedFFICallback => do
       -- set thread status to finished
       ts <- getThreadState tid
-      updateThreadState tid ts {tsStatus = ThreadFinished, tsStack = [], tsCurrentResult = result}
+      updateThreadState tid $ {tsStatus := ThreadFinished, tsStack := [], tsCurrentResult := result} ts
       mylog $ show tid ++ " ** SR_ThreadFinishedFFICallback"
       pure result
-
+    {-
     SR_ThreadBlocked  -> yield result
 
     SR_ThreadYield    -> yield result

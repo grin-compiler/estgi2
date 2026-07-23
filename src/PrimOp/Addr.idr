@@ -68,10 +68,20 @@ evalPrimOp fallback op args t tc = case (op, args) of
     primIO $ prim_eval "(foreign-set! 'unsigned-8 \{p} \{index} \{value})"
     pure []
 
+  -- readWord32OffAddr# :: Addr# -> Int# -> State# s -> (# State# s, Word32# #)
+  ( "readWord32OffAddr#", [PtrAtom _ p, IntAtom index, st]) => do
+    v <- primIO $ prim_eval "(foreign-ref 'unsigned-32 \{p} \{4 * index})"
+    pure [WordAtom v]
+
   -- readWord64OffAddr# :: Addr# -> Int# -> State# s -> (# State# s, Word64# #)
   ( "readWord64OffAddr#", [PtrAtom _ p, IntAtom index, st]) => do
     v <- primIO $ prim_eval "(foreign-ref 'unsigned-64 \{p} \{8 * index})"
     pure [WordAtom v]
+
+  -- readFloatOffAddr# :: Addr# -> Int# -> State# s -> (# State# s, Float# #)
+  ( "readFloatOffAddr#", [PtrAtom _ p, IntAtom index, st]) => do
+    v <- primIO $ prim_eval "(foreign-ref 'single-float \{p} \{4 * index})"
+    pure [FloatAtom v]
 
   -- readAddrOffAddr# :: Addr# -> Int# -> State# s -> (# State# s, Addr# #)
   ( "readAddrOffAddr#", [PtrAtom _ p, IntAtom index, st]) => do

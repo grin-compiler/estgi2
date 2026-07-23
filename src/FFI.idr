@@ -4,6 +4,7 @@ import Control.Monad.State
 import Data.SortedSet
 import Data.SortedMap
 import Data.List
+import Data.IORef
 import Data.String
 import System
 
@@ -93,7 +94,7 @@ mkFFIArgTy = \case
   Word32V{}           => Just "unsigned-32"
   Word64V{}           => Just "unsigned-64"
   -}
-  --FloatAtom{}         => Just "single-float"
+  FloatAtom{}         => Just "single-float"
   DoubleAtom{}        => Just "double-float"
   ByteArray{}         => Just "u8*"
   MutableByteArray{}  => Just "u8*"
@@ -107,14 +108,6 @@ prim__save_fasl : {a : Type} -> a -> PrimIO ()
 save_fasl : HasIO io => {a : Type} -> a -> io ()
 save_fasl val = primIO (prim__save_fasl val)
 -}
---public export
-data ArgList : Type where [external]
-
-%foreign "scheme:list"
-emptyArgs : ArgList
-
-%foreign "scheme:list-cons"
-addArg : {a : Type} -> a -> ArgList -> ArgList
 
 addFFIArg : ArgList -> Atom -> ArgList
 addFFIArg args = \case
@@ -122,7 +115,7 @@ addFFIArg args = \case
   PtrAtom _ p       => addArg p args
   IntAtom i         => addArg i args
   WordAtom w        => addArg w args
-  --FloatAtom f       -> pure . Just . FFI.argCFloat $ CFloat f
+  FloatAtom f       => addArg f args
   DoubleAtom d      => addArg d args
   {-
   ByteArray bai -> do
@@ -194,11 +187,11 @@ evalForeignCall funPtr cArgTys cArgs retType = case retType of
   UnboxedTuple [AddrRep] => do
     result <- callFFI funPtr "void*" cArgTys cArgs
     pure [PtrAtom RawPtr result]
-  {-
-  UnboxedTuple [FloatRep] -> do
-    CFloat result <- FFI.callFFI funPtr "single-float" cArgTys cArgs
+
+  UnboxedTuple [FloatRep] => do
+    result <- callFFI funPtr "single-float" cArgTys cArgs
     pure [FloatAtom result]
-  -}
+
   UnboxedTuple [DoubleRep] => do
     result <- callFFI funPtr "double-float" cArgTys cArgs
     pure [DoubleAtom result]
@@ -262,7 +255,7 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
         else if foreignCSafety == PlayRisky then do
           let cArgTys = catMaybes $ map mkFFIArgTy args
               cArgs   = foldl addFFIArg emptyArgs $ reverse args
-          lift $ evalForeignCall (show foreignSymbol) cArgTys cArgs t
+          borrowState $ evalForeignCall (show foreignSymbol) cArgTys cArgs t
 
         else stgErrorM $ "unsupported StgFCallOp: " ++ show fCall ++ " :: " ++ show t ++ "\n args: " ++ show args
 
@@ -303,7 +296,7 @@ evalFCallOp evalOnNewThread fCall@(MkForeignCall foreignCTarget foreignCConv for
               | _ => stgErrorM $ "unsupported StgFCallOp: " ++ show fCall ++ " :: " ++ show t ++ "\n args: " ++ show args
         let cArgTys = catMaybes $ map mkFFIArgTy funArgs
             cArgs   = foldl addFFIArg emptyArgs $ reverse funArgs
-        lift $ evalForeignCall (show funPtr) cArgTys cArgs t
+        borrowState $ evalForeignCall (show funPtr) cArgTys cArgs t
       {-
         -> do
           cArgs <- catMaybes <$> mapM mkFFIArg funArgs
